@@ -23,6 +23,7 @@ from repowise.cli.ci import (
     ci_notices,
     ci_revspec,
     report_baseline_growth,
+    write_gate_summary,
 )
 from repowise.cli.helpers import console, repo_index_session, resolve_command_target, run_async
 from repowise.cli.output import emit_json, emit_refusal, format_option
@@ -235,6 +236,8 @@ def _emit(
             for line in render.render_github_annotations(findings, gate=gate):
                 click.echo(line)
             append_step_summary(markdown)
+            if gate is not None:
+                write_gate_summary(render.gate_summary(gate))
     else:
         _render(payload)
         if gate is not None:

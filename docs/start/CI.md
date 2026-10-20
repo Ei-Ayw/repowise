@@ -111,15 +111,25 @@ jobs:
 | `working-directory` | `.` | Where to run from. |
 | `base` | from the pull request | Range for coverage, security, health, risk and test selection; empty reads the target branch, else the default branch. |
 | `upload-sarif` | `false` | Upload findings to [code scanning](#code-scanning-sarif). |
+| `comment` | `false` | Post one pull-request comment summarizing every gate, updated in place on each run. |
+| `github-token` | `github.token` | Token the summary comment is posted with. |
 
 Gate inputs are in each gate's section.
 
 | Output | Holds |
 |--------|-------|
 | `coverage`, `doc-drift`, `security`, `health`, `risk` | each gate's exit code; empty when not run |
+| `verdict` | `fail` when any gate failed or could not evaluate, `warn` when any passed with warnings, else `pass` |
 | `sarif-dir` | the SARIF directory, when `upload-sarif` is on and a gate wrote findings |
 | `impacted-tests` | runner arguments for the selected tests, or `:all` |
 | `run-all-tests` | `false` only when that subset is safe alone; `true` otherwise, also when selection could not run |
+
+**Summary comment.** The job summary ends with a table of every gate and its
+result. With `comment: true` the same table, plus each gate's findings, goes
+into one pull-request comment that later runs edit rather than repeat; the job
+needs `pull-requests: write`. Each finding carries a hidden
+`repowise-fingerprint:v1` marker with its line-free id, so the comment counts
+what a push resolved.
 
 **Without the action**, run each gate as a step after `pip install repowise`,
 with `--format github` (commands as in [Other CI systems](#other-ci-systems)).

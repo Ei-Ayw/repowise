@@ -2,7 +2,7 @@
 
 Every `repowise` command and flag. For a guided introduction, see the [Quickstart](../start/QUICKSTART.md).
 
-Top-level commands (alphabetical): `agents`, `ask`, `attribution`, `augment`, `changes`, `check`, `components`,
+Top-level commands (alphabetical): `agents`, `ask`, `attribution`, `augment`, `changes`, `check`, `ci-summary`, `components`,
 `config`, `context`, `corrections`, `costs`, `coverage`, `dead-code`, `decision`, `delete`, `distill`, `doc-drift`,
 `doctor`, `events`, `expand`, `export`, `generate`, `generate-claude-md`, `health`, `hook`, `impacted-tests`, `init`,
 `login`, `logout`, `mcp`, `next`, `overlap`, `packages`, `plugins`, `publish`, `reindex`, `report`, `restyle`, `risk`,
@@ -29,7 +29,7 @@ Grouped by task; `PATH` and flags are in each command's section.
   [`next`](#repowise-next-path)
 - **Health and risk:** [`health`](#repowise-health-path), [`health check`](#repowise-health-check-revspec),
   [`risk`](#repowise-risk-revspec), [`overlap`](#repowise-overlap), [`dead-code`](#repowise-dead-code-path),
-  [`doc-drift`](#repowise-doc-drift-path), [`security`](#repowise-security), [`check`](#repowise-check-revspec),
+  [`doc-drift`](#repowise-doc-drift-path), [`security`](#repowise-security), [`check`](#repowise-check-revspec), [`ci-summary`](#repowise-ci-summary-dir),
   [`impacted-tests`](#repowise-impacted-tests-revspec), [`coverage`](#repowise-coverage),
   [`components`](#repowise-components), [`packages`](#repowise-packages), [`changes`](#repowise-changes),
   [`suspects`](#repowise-suspects), [`events`](#repowise-events), [`report
@@ -1390,6 +1390,16 @@ repowise check origin/main..HEAD --sarif-file check.sarif
   `provenance`, `reaching_tests`, `decisions_crossed`, `contracts`) with status, basis, per-file details. `opa eval
   --input check.json --data policy.rego 'data.repowise.deny'` runs Rego over `input.evidence.items`, beside or instead
   of `policies.yaml`.
+
+---
+
+### `repowise ci-summary DIR`
+
+Combines the gates a CI job ran into one verdict table, appended to the GitHub job summary, and prints the combined verdict (`pass`, `warn` or `fail`). Each gate run with `--format github` while `REPOWISE_GATE_SUMMARY_DIR` names a directory leaves its result there, and each `--gate NAME=EXIT_CODE` reconciles one with its exit code; a gate that left nothing reads as could not evaluate. `--comment-file` writes a pull-request comment that also lists each gate's findings, and `--previous` (the comment it replaces) adds how many findings were resolved since.
+
+```bash
+repowise ci-summary DIR --gate NAME=EXIT_CODE... [--comment-file FILE] [--previous FILE]
+```
 
 ---
 
