@@ -112,7 +112,7 @@ jobs:
 | `base` | from the pull request | Range for coverage, security, health, risk and test selection; empty reads the target branch, else the default branch. |
 | `upload-sarif` | `false` | Upload findings to [code scanning](#code-scanning-sarif). |
 | `comment` | `false` | Post one pull-request comment summarizing every gate, updated in place on each run. |
-| `github-token` | `github.token` | Token the summary comment is posted with. |
+| `github-token` | `github.token` | Token the summary comment is posted with; a later run edits only the comment this token's own account posted. |
 
 Gate inputs are in each gate's section.
 
