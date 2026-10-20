@@ -1395,10 +1395,10 @@ repowise check origin/main..HEAD --sarif-file check.sarif
 
 ### `repowise ci-summary DIR`
 
-Combines the gates a CI job ran into one verdict table, appended to the GitHub job summary, and prints the combined verdict (`pass`, `warn` or `fail`). Each gate run with `--format github` while `REPOWISE_GATE_SUMMARY_DIR` names a directory leaves its result there, and each `--gate NAME=EXIT_CODE` reconciles one with its exit code; a gate that left nothing reads as could not evaluate. `--comment-file` writes a pull-request comment that also lists each gate's findings, and `--previous` (the comment it replaces) adds how many findings were resolved since.
+Combines the gates a CI job ran into one verdict table, appended to the GitHub job summary, and prints the combined verdict (`pass`, `warn` or `fail`). Each gate run with `--format github` while `REPOWISE_GATE_SUMMARY_DIR` names a directory leaves its result there, and each `--gate NAME=EXIT_CODE` reconciles one with its exit code; a gate that left nothing reads as could not evaluate. `--comment-file` writes a pull-request comment that also lists each gate's findings, `--previous` (the comment it replaces) adds how many findings were resolved since, and `--comment-key` keeps one comment per working directory.
 
 ```bash
-repowise ci-summary DIR --gate NAME=EXIT_CODE... [--comment-file FILE] [--previous FILE]
+repowise ci-summary DIR --gate NAME=EXIT_CODE... [--comment-file FILE] [--previous FILE] [--comment-key KEY]
 ```
 
 ---

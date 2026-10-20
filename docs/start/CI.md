@@ -119,7 +119,7 @@ Gate inputs are in each gate's section.
 | Output | Holds |
 |--------|-------|
 | `coverage`, `doc-drift`, `security`, `health`, `risk` | each gate's exit code; empty when not run |
-| `verdict` | `fail` when any gate failed or could not evaluate, `warn` when any passed with warnings, else `pass` |
+| `verdict` | `fail` when any gate failed or could not evaluate, `warn` when any passed with warnings, else `pass`; a gate that exits 0 without leaving a result (an older Repowise) counts as `warn` |
 | `sarif-dir` | the SARIF directory, when `upload-sarif` is on and a gate wrote findings |
 | `impacted-tests` | runner arguments for the selected tests, or `:all` |
 | `run-all-tests` | `false` only when that subset is safe alone; `true` otherwise, also when selection could not run |
@@ -127,7 +127,8 @@ Gate inputs are in each gate's section.
 **Summary comment.** The job summary ends with a table of every gate and its
 result. With `comment: true` the same table, plus each gate's findings, goes
 into one pull-request comment that later runs edit rather than repeat; the job
-needs `pull-requests: write`. Each finding carries a hidden
+needs `pull-requests: write`. Each working directory keeps its own comment.
+Each finding carries a hidden
 `repowise-fingerprint:v1` marker with its line-free id, so the comment counts
 what a push resolved.
 
