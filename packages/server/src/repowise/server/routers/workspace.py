@@ -225,7 +225,7 @@ async def get_workspace(
             stats = _query_repo_stats(db_path)
         # The member's own store first: a repo updated on its own leaves the
         # config's time behind.
-        indexed_at = stats.pop("indexed_at", None) or r.indexed_at
+        indexed_at = stats.pop("indexed_at", r.indexed_at)
         repo_entries.append(
             WorkspaceRepoEntry(
                 alias=r.alias,
