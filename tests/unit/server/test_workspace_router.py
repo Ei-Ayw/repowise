@@ -239,7 +239,7 @@ def _create_workspace_repo_db(
     with sqlite3.connect(str(db_path)) as conn:
         conn.executescript(
             """
-            CREATE TABLE repositories (id TEXT PRIMARY KEY);
+            CREATE TABLE repositories (id TEXT PRIMARY KEY, updated_at TEXT);
             CREATE TABLE graph_nodes (
                 id TEXT PRIMARY KEY,
                 node_type TEXT NOT NULL DEFAULT 'file',
@@ -257,7 +257,8 @@ def _create_workspace_repo_db(
                 score REAL NOT NULL,
                 nloc INTEGER NOT NULL
             );
-            INSERT INTO repositories (id) VALUES ('repo-backend');
+            INSERT INTO repositories (id, updated_at)
+                VALUES ('repo-backend', '2026-10-20 19:21:15');
             INSERT INTO graph_nodes (id, node_type, language, symbol_count) VALUES
                 ('src/a.py', 'file', 'python', 2),
                 ('src/b.py', 'file', 'python', 3),
@@ -936,7 +937,7 @@ class TestQueryRepoStats:
             # a missing table aborts the whole block, so create the minimal set.
             conn.executescript(
                 """
-                CREATE TABLE repositories (id TEXT PRIMARY KEY);
+                CREATE TABLE repositories (id TEXT PRIMARY KEY, updated_at TEXT);
                 CREATE TABLE graph_nodes (
                     id TEXT PRIMARY KEY,
                     node_type TEXT NOT NULL DEFAULT 'file',
@@ -1723,3 +1724,17 @@ class TestGetTestImpact:
         assert data["unresolved"][0]["consumer_symbol_id"] is None
         assert data["files_analyzed"][0]["state"] == "measured"
         assert data["summary"]["states"]["measured"] == 1
+
+
+@pytest.mark.asyncio
+async def test_workspace_indexed_at_comes_from_the_member_store(tmp_path: Path) -> None:
+    """A member updated on its own leaves the config's time behind the store's."""
+    _create_workspace_repo_db(tmp_path, "backend")
+    app = _make_workspace_app(ws_config=_make_ws_config(), workspace_root=str(tmp_path))
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        repos = (await c.get("/api/workspace")).json()["repos"]
+
+    by_alias = {r["alias"]: r["indexed_at"] for r in repos}
+    # backend: the store stamp over the config's 2026-04-12; frontend has no store.
+    assert by_alias == {"backend": "2026-10-20T19:21:15+00:00", "frontend": None}

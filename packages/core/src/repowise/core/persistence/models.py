@@ -149,8 +149,12 @@ class Repository(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now_utc
     )
+    # When the index last synced to the checkout, read through
+    # ``crud.index_synced_at``. No ``onupdate``: only the sync stampers move it,
+    # so a settings edit or a command that merely opens the row cannot make a
+    # days-old index read as fresh.
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_now_utc, onupdate=_now_utc
+        DateTime(timezone=True), nullable=False, default=_now_utc
     )
 
 

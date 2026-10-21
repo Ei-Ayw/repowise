@@ -123,7 +123,7 @@ async def overview_summary(
             "total_nloc": sum(int(m.nloc or 0) for m in health_metrics),
             "deltas": await sections.snapshot_deltas(session, repo_id, snapshot),
         },
-        "health": await sections.health_block(session, repo_id, health_metrics, snapshot),
+        "health": await sections.health_block(session, repo_id, health_metrics, snapshot, repo),
         "languages": mix["languages"],
         "docs_config_languages": mix["docs_config_languages"],
         **await sections.attention_block(session, repo_id),

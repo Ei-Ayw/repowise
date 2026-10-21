@@ -116,10 +116,12 @@ class EditorFileDataFetcher:
         # below it. Fall back to the shell-out only when the column is empty
         # (pre-backfill indexes).
         stored_commit = ((repo.head_commit or "")[:7]) if repo else ""
+        # The date likewise is the index's sync time, never the render time.
+        synced_at = crud.index_synced_at(repo)
 
         return EditorFileData(
             repo_name=repo_name,
-            indexed_at=datetime.now(UTC).strftime("%Y-%m-%d"),
+            indexed_at=synced_at.strftime("%Y-%m-%d") if synced_at else "unknown",
             indexed_commit=stored_commit or _get_head_short_sha(self._repo_path),
             architecture_summary=(
                 await self._get_architecture_summary() if "architecture" in s else ""

@@ -59,7 +59,8 @@ async def upsert_repository(
     ``stamp_head=True`` (read HEAD). Callers that only need the row, such as
     decisions, scans and server registration, leave it alone: moving it there
     made the database claim an index at HEAD while ``state.json`` still named
-    the last real sync.
+    the last real sync. ``updated_at`` (see :func:`index_synced_at`) moves with
+    the commit stamp for the same reason.
     """
     result = await session.execute(select(Repository).where(Repository.local_path == local_path))
     repo = result.scalar_one_or_none()
@@ -88,10 +89,28 @@ async def upsert_repository(
         # out a previously recorded one (e.g. a transient non-checkout path).
         if resolved_head:
             repo.head_commit = resolved_head
-        repo.updated_at = _now_utc()
+        if stamping:
+            repo.updated_at = _now_utc()
 
     await session.flush()
     return repo
+
+
+def index_synced_at(repo: Repository | None) -> datetime | None:
+    """When *repo*'s index last synced to the checkout, timezone-aware, or ``None``.
+
+    The one "indexed at" every surface reports. Only a sync moves it: an index
+    run's stamping :func:`upsert_repository` and git-totals write, and the
+    "up to date" re-stamp in ``reconcile_repo_head_commit``.
+    """
+    return as_utc(getattr(repo, "updated_at", None))
+
+
+def as_utc(stamp: datetime | None) -> datetime | None:
+    """*stamp* as timezone-aware UTC; SQLite hands these columns back naive."""
+    if not isinstance(stamp, datetime):
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC)
 
 
 ANALYSIS_RAN_KEY = "analysis_ran_at"
@@ -209,6 +228,8 @@ async def update_repo_git_totals(
     for attr, value in updates.items():
         if value is not None:
             setattr(repo, attr, value)
+    # Index persist is the only caller, so this is a sync; it also moves the
+    # stamp ``index_stamp`` caches whole-history answers on.
     repo.updated_at = _now_utc()
     await session.flush()
 

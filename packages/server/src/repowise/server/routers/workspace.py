@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from repowise.core.docs_mode import resolve_docs_mode
 from repowise.core.workspace import reads
+from repowise.core.workspace.update import synced_at_iso
 from repowise.server.deps import (
     get_cross_repo_enricher,
     get_workspace_config,
@@ -112,8 +113,8 @@ def _query_repo_stats(db_path: Path) -> dict:
     """Query basic stats from a repo's wiki.db using raw sqlite3.
 
     Returns a dict with repo_id, file_count, symbol_count, page_count,
-    doc_coverage_pct, hotspot_count, health_score, status, docs_enabled, and
-    docs_skip_reason.  All values default to sensible neutrals on error.
+    doc_coverage_pct, hotspot_count, health_score, status, docs_enabled,
+    docs_skip_reason, and (when the row is read) indexed_at.  All values default to sensible neutrals on error.
 
     ``health_score`` is None when the repo carries no health metrics; callers
     decide whether to fall back to a derived score or to render nothing.
@@ -151,10 +152,11 @@ def _query_repo_stats(db_path: Path) -> dict:
         conn = sqlite3.connect(str(db_path))
         c = conn.cursor()
 
-        # repo id
-        row = c.execute("SELECT id FROM repositories LIMIT 1").fetchone()
+        # repo id, and the sync time every other surface reports
+        row = c.execute("SELECT id, updated_at FROM repositories LIMIT 1").fetchone()
         if row:
             result["repo_id"] = row[0]
+            result["indexed_at"] = synced_at_iso(row[1])
 
         # file count (graph_nodes)
         row = c.execute("SELECT COUNT(*) FROM graph_nodes WHERE node_type = 'file'").fetchone()
@@ -221,12 +223,15 @@ async def get_workspace(
             repo_path = (ws_root_path / r.path).resolve()
             db_path = repo_path / ".repowise" / "wiki.db"
             stats = _query_repo_stats(db_path)
+        # The member's own store first: a repo updated on its own leaves the
+        # config's time behind.
+        indexed_at = stats.pop("indexed_at", None) or r.indexed_at
         repo_entries.append(
             WorkspaceRepoEntry(
                 alias=r.alias,
                 path=r.path,
                 is_primary=r.is_primary,
-                indexed_at=r.indexed_at,
+                indexed_at=indexed_at,
                 last_commit_at_index=r.last_commit_at_index,
                 **stats,
             )

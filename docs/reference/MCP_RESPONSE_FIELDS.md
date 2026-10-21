@@ -26,7 +26,7 @@ Routine responses carry a lean envelope. `get_overview` (called once per session
 | `timing_ms` | `get_overview`, or debug meta | Tool wall time |
 | `hint` | Sometimes | A short follow-up suggestion |
 | `cached` | Only when `true` | The response came from cache |
-| `index_age_days` | A repository is resolved | Days since the last `repowise update` |
+| `index_age_days` | A repository is resolved | Whole days since the index last synced (`repowise init` or `repowise update`), the same time `repowise status`, the dashboard and CLAUDE.md report |
 | `indexed_commit` | A repository is resolved | Short SHA the index was built from |
 | `live_head` | `.git/HEAD` is readable | Short SHA of the checkout; equals `indexed_commit` when current |
 | `index_behind` | The comparison ran | `true` if HEAD moved, `false` if not; absent if it could not run |

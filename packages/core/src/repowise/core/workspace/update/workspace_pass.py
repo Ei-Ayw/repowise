@@ -9,7 +9,6 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -47,6 +46,7 @@ from .state import (
     clear_stale_update_pending,
     read_repo_state,
     reconcile_repo_head_commit,
+    stamp_workspace_entry,
     sync_workspace_state_from_disk,
 )
 
@@ -334,8 +334,7 @@ async def _update_stale_repo(update_pass: _RepoUpdatePass, repo: _StaleRepo) -> 
             if result.updated:
                 entry = update_pass.ws_config.get_repo(alias)
                 if entry is not None:
-                    entry.indexed_at = datetime.now(UTC).isoformat()
-                    entry.last_commit_at_index = new_head
+                    stamp_workspace_entry(entry, path, new_head)
         except Exception as exc:
             result = RepoUpdateResult(
                 alias=alias,

@@ -495,10 +495,13 @@ def _workspace_rows(target: CommandTarget) -> list[dict]:
     each consumer branch on ``indexed`` before it may read a field.
     """
     from repowise.core.workspace import check_repo_staleness
+    from repowise.core.workspace.update import sync_workspace_state_from_disk
 
     ws_root = target.ws_root
     ws_config = target.ws_config
     assert ws_root is not None and ws_config is not None
+    # A member updated on its own leaves the config behind its store.
+    sync_workspace_state_from_disk(ws_root, ws_config, save_if_changed=False)
 
     rows: list[dict] = []
     for entry in ws_config.repos:

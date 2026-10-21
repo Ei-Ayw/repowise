@@ -6,7 +6,7 @@ import asyncio
 import json as _json
 import logging
 import subprocess
-from contextlib import suppress
+from contextlib import closing, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -119,6 +119,66 @@ def read_state_commit(repo_path: Path) -> str | None:
     return str(sha) if sha else None
 
 
+def read_index_synced_at(repo_path: Path) -> str | None:
+    """ISO time *repo_path*'s index last synced (``crud.index_synced_at``), or None.
+
+    Plain ``sqlite3``, read-only, so sync callers and ones already on an event
+    loop can ask. ``None`` for a non-SQLite store or an unreadable one.
+    """
+    import sqlite3
+
+    from sqlalchemy.engine import make_url
+
+    from ...persistence.database import get_configured_db_url, get_repo_db_path
+
+    # Not ``resolve_db_url``: its default creates ``.repowise/``, which would
+    # make an unindexed member look indexed.
+    configured = get_configured_db_url()
+    if configured is None:
+        db_file = get_repo_db_path(repo_path)
+    else:
+        url = make_url(configured)
+        if not url.drivername.startswith("sqlite"):
+            return None
+        db_file = Path(url.database or "")
+    if not db_file.is_file():
+        return None
+    try:
+        with closing(sqlite3.connect(f"{db_file.as_uri()}?mode=ro", uri=True)) as conn:
+            if configured is None:
+                # A repo-local store holds one repository row.
+                row = conn.execute("SELECT updated_at FROM repositories LIMIT 1").fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT updated_at FROM repositories WHERE local_path = ?",
+                    (str(repo_path),),
+                ).fetchone()
+    except (sqlite3.Error, ValueError):
+        return None
+    return synced_at_iso(row[0] if row else None)
+
+
+def synced_at_iso(raw: str | None) -> str | None:
+    """A raw ``repositories.updated_at`` cell as the ISO sync time, or None."""
+    from ...persistence.crud import as_utc
+
+    try:
+        synced_at = as_utc(datetime.fromisoformat(raw)) if raw else None
+    except ValueError:
+        return None
+    return synced_at.isoformat() if synced_at else None
+
+
+def stamp_workspace_entry(entry: Any, repo_path: Path, head: str | None) -> None:
+    """Record a member's finished sync on its workspace entry.
+
+    The time is the store's own sync stamp so the config and every DB reader
+    agree; now only when the store cannot be read.
+    """
+    entry.indexed_at = read_index_synced_at(repo_path) or datetime.now(UTC).isoformat()
+    entry.last_commit_at_index = head
+
+
 class IndexedCommit(NamedTuple):
     """The commit an index describes, or why it cannot be named."""
 
@@ -190,9 +250,10 @@ def sync_workspace_state_from_disk(
 
     A child repo can be updated outside the workspace orchestrator (the
     user runs ``repowise update`` inside the child dir directly), which
-    drifts ``RepoEntry.last_commit_at_index`` away from the actual
-    ``state.json`` value. Call this before any workspace-level decision
-    that reads from ``ws_config`` so we never act on stale info.
+    drifts ``RepoEntry.last_commit_at_index`` (and ``indexed_at``, from the
+    repo's own store) away from the actual values. Call this before any
+    workspace-level decision that reads from ``ws_config`` so we never act on
+    stale info.
 
     Returns the list of aliases that changed.
     """
@@ -202,8 +263,15 @@ def sync_workspace_state_from_disk(
         if not abs_path.is_dir():
             continue
         disk_commit = read_state_commit(abs_path)
+        disk_synced_at = read_index_synced_at(abs_path)
+        moved = False
         if disk_commit is not None and disk_commit != entry.last_commit_at_index:
             entry.last_commit_at_index = disk_commit
+            moved = True
+        if disk_synced_at is not None and disk_synced_at != entry.indexed_at:
+            entry.indexed_at = disk_synced_at
+            moved = True
+        if moved:
             changed.append(entry.alias)
     if changed and save_if_changed:
         try:

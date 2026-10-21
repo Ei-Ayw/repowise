@@ -266,7 +266,7 @@ def snapshot_history(snapshot: Any) -> list[dict]:
 
 
 async def health_block(
-    session: AsyncSession, repo_id: str, health_metrics: list[Any], snapshot: Any
+    session: AsyncSession, repo_id: str, health_metrics: list[Any], snapshot: Any, repo: Any
 ) -> dict:
     """Health KPIs, the defect-accuracy stat and the snapshot trend.
 
@@ -287,9 +287,7 @@ async def health_block(
         session, repo_id, metrics=health_metrics, findings=findings
     )
     hotspot_paths = await crud.get_hotspot_file_paths(session, repo_id)
-    last_indexed_at = (
-        snapshot.taken_at.isoformat() if snapshot.snapshot_count and snapshot.taken_at else None
-    )
+    indexed_at = crud.index_synced_at(repo)
     return {
         "average_health": summary.get("average_health"),
         # Files in a language health has no dialect for: in no figure here.
@@ -315,7 +313,7 @@ async def health_block(
         "worst_performance_score": summary.get("worst_performance_score"),
         "severity_breakdown": health_severity_breakdown(findings),
         "defect_accuracy": defect_accuracy(health_metrics, findings),
-        "last_indexed_at": last_indexed_at,
+        "last_indexed_at": indexed_at.isoformat() if indexed_at else None,
         # The true total, not the length of the windowed read.
         "snapshot_count": snapshot.snapshot_count,
         "history": snapshot_history(snapshot),
