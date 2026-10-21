@@ -159,19 +159,13 @@ def describe_decision_currency(
     if created_at is None:
         return None
 
-    landing = _landing(root, created_at, evidence_commits)
+    since_commit, on = _anchor(root, created_at, evidence_commits)
     count = commits_since(
-        root,
-        since_commit=landing.sha if landing else None,
-        since_date=created_at,
-        nodes=scope,
+        root, since_commit=since_commit, since_date=created_at, nodes=scope
     )
     if count is None:
         return None
 
-    on = created_at.strftime("%Y-%m-%d")
-    if landing:
-        on = f"{landing.at:%Y-%m-%d} (landed in {landing.sha[:9]})"
     files = "file" if len(scope) == 1 else f"{len(scope)} files"
     if count == 0:
         return f"nothing in the {files} it governs has changed since {on}"
@@ -179,13 +173,19 @@ def describe_decision_currency(
     return f"the {files} it governs changed in {commits} since {on}"
 
 
-def _landing(root: Path | str, created_at: datetime, evidence_commits: Sequence[str]):
-    """The commit that landed a record written before it, or None."""
+def _anchor(
+    root: Path | str, created_at: datetime, evidence_commits: Sequence[str]
+) -> tuple[str | None, str]:
+    """The commit to count from and how to date it: the landing of a record
+    written before it, else no commit and the record's own date."""
     # Function-local: this module's import budget is the store and nothing heavier.
     from repowise.core.analysis.decisions.landing import evidence_landings, record_landing
 
     landings = evidence_landings(root, evidence_commits, timeout=GIT_TIMEOUT_S)
-    return record_landing(evidence_commits, landings, created_at)
+    landing = record_landing(evidence_commits, landings, created_at)
+    if landing is None:
+        return None, created_at.strftime("%Y-%m-%d")
+    return landing.sha, f"{landing.at:%Y-%m-%d} (landed in {landing.sha[:9]})"
 
 
 def recorded_on(birth_at: float) -> str:
