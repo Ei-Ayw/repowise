@@ -205,7 +205,8 @@ def test_code_shape_from_the_week_is_one_maintainability_item_to_plan() -> None:
     )
     for subset in (found, found[:1]):
         (a,) = _run(code.fresh_regressions, _facts(recent_findings=subset)).actions
-        assert (a.tier, a.severity, a.effective_value) == ("plan", "medium", SEVERITY_VALUE["medium"])
+        # Its severity is its evidence's, held at high; its value keeps it below defects.
+        assert (a.tier, a.severity, a.effective_value) == ("plan", "high", SEVERITY_VALUE["medium"])
         assert a.horizons == ("week",)
         assert dict((w.label, w.value) for w in a.why)["code-shape findings"] == str(len(subset))
     (single,) = _run(code.fresh_regressions, _facts(recent_findings=found[:1])).actions
@@ -394,6 +395,34 @@ def test_fix_first_emits_now_and_next_and_leaves_later() -> None:
     assert len({a.action_id for a in actions}) == 2
 
 
+def test_a_fix_first_row_reads_its_findings_severity() -> None:
+    """GraphFlow's row said medium while its own severity fact said high."""
+    from repowise.core.analysis.health.fix_first.model import FixFact
+
+    item = _fix_items()[0]
+    for fact, tier, expected in (
+        ("high", "next", "high"),
+        ("critical", "now", "high"),
+        ("medium", "now", "medium"),
+        (None, "next", "medium"),
+        (None, "now", "high"),
+    ):
+        facts = (FixFact("severity", fact),) if fact else ()
+        (a,) = _run(code.fix_first, _facts(fix_first=(replace(item, tier=tier, facts=facts),))).actions
+        assert a.severity == expected, (fact, tier)
+        if fact:
+            assert dict((w.label, w.value) for w in a.why)["severity"] == fact
+
+
+def test_a_regression_row_reads_its_findings_severity() -> None:
+    def severity(*found: RecentFinding) -> str:
+        return _run(code.fresh_regressions, _facts(recent_findings=found)).actions[0].severity
+
+    assert severity(_recent("src/a.py", severity="medium")) == "medium"
+    assert severity(_recent("src/a.py", severity="critical", kind="performance")) == "high"
+    assert severity(_recent("src/a.py", severity="low", kind="shape")) == "low"
+
+
 def test_fix_first_leaves_a_cause_the_week_added_to_fresh_regressions() -> None:
     perf = _fix_items()[0]
     assert perf.kind == "perf_fix" and perf.target.symbol
@@ -563,7 +592,15 @@ def test_coverage_stale_is_improve_signal() -> None:
     (a,) = _run(signal.coverage_stale, _facts(coverage=cov)).actions
     assert a.tier == "improve_signal"
     recent = CoverageState("stale", ANCHOR - timedelta(days=3), 40)
-    assert _run(signal.coverage_stale, _facts(coverage=recent)).actions == ()
+    outcome = _run(signal.coverage_stale, _facts(coverage=recent))
+    assert outcome.actions == ()
+    # Stale is one thing everywhere: measured at an earlier commit.
+    assert outcome.reason.startswith("Coverage was measured at an earlier commit;")
+    file = _file("src/a.py", line_coverage_pct=62.0)
+    (row,) = _run(code.fragile_file, _facts([file], coverage=recent)).actions
+    assert dict((w.label, w.value) for w in row.why)["line coverage"] == (
+        "62% (measured at an earlier commit)"
+    )
 
 
 def test_decisions_unreviewed_is_improve_signal() -> None:

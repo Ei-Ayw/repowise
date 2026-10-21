@@ -28,13 +28,19 @@ The dashboard (`repowise serve`) has a Code Health page per repository at
 
 ```
 Fix first (3 of 41 eligible items, 12 due; 230 in the inventory, tests, tooling and history-only files left out)
- 1. Extract the retry branch from parse_config  now, effort M, +1.4 health
+ 1. Extract the retry branch from parse_config now · effort M · +1.4 health on this file
     src/config/loader.py:212
     CCN 47 and nesting 6 in a file changed 19 times this quarter.
     verify: pytest tests/unit/test_loader.py
 
-Code health: 7.4/10 [Good], Hotspot: 6.1/10, Worst: 2.3/10 (src/config/loader.py)
+Code health: 7.42/10 [Good] · Production code: 6.93/10 [Fair] · Hotspot: 6.10/10 [Fair] · Worst: 2.3/10 [At risk] (src/config/loader.py)
 ```
+
+Every score on the headline carries its band; Production code leaves test files out and
+shows while tests are in the reading. In `repowise next`, a row's severity is the worst of
+the findings it rests on, held at high. A coverage figure measured at an earlier commit
+than the index says so on its row, and the refresh row appears once that report is 14 days
+older than the latest commit.
 
 ## The three signals
 

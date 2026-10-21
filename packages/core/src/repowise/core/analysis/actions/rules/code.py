@@ -16,6 +16,7 @@ from ..model import (
     ActionDetail,
     RuleOutcome,
     WhyFact,
+    evidence_severity,
     fingerprint,
     shared_priority,
 )
@@ -135,11 +136,12 @@ def _regression_file(path: str, found: list, ctx: RepoContext, weight: float) ->
     else:
         title = f"Fix what this week's changes added to {code(path)}"
     latest = max(commits.values(), key=lambda f: f.committed_at or ctx.anchor)
+    details = _regression_details(found)
     return Action(
         rule="fresh_regressions",
         tier="act_now",
         horizons=("week",),
-        severity="high",
+        severity=_details_severity(details, "high"),
         title=title,
         impact=(
             f"{plural(len(commits), 'commit')} in the last 7 days added "
@@ -164,7 +166,7 @@ def _regression_file(path: str, found: list, ctx: RepoContext, weight: float) ->
         evidence_ids=tuple(sorted(commits)),
         evidence_total=len(found),
         fingerprint=fingerprint(len(found), *sorted(kinds)),
-        details=_regression_details(found),
+        details=details,
         commands=_regression_commands([path], latest.sha),
     )
 
@@ -186,6 +188,10 @@ def _regression_details(found: list) -> tuple[ActionDetail, ...]:
         )
         for f in ordered
     )
+
+
+def _details_severity(details: tuple[ActionDetail, ...], default: str) -> str:
+    return evidence_severity((d.severity for d in details), default)
 
 
 def _regression_commands(paths: list[str], sha: str) -> tuple[ActionCommand, ...]:
@@ -216,11 +222,15 @@ def _regression_rollup(ranked: list[tuple[str, list]]) -> Action:
     found = [f for _, fs in ranked for f in fs]
     commits = {f.sha for f in found}
     worst_path, worst = ranked[0]
+    # Evidence in the order the files are ranked, so it starts where the
+    # impact line says to start; the commit to inspect is the latest one
+    # that touched that same file.
+    details = tuple(d for _, fs in ranked for d in _regression_details(fs))
     return Action(
         rule="fresh_regressions",
         tier="act_now",
         horizons=("week",),
-        severity="high",
+        severity=_details_severity(details, "high"),
         title=(
             f"Fix what this week's commits added: {_kinds_text(found)} "
             f"in {len(ranked):,} files"
@@ -246,10 +256,7 @@ def _regression_rollup(ranked: list[tuple[str, list]]) -> Action:
         evidence_total=len(found),
         includes=tuple(path for path, _ in ranked[:10]),
         fingerprint=fingerprint(len(found) // 10, *sorted({f.kind for f in found})),
-        # Evidence in the order the files are ranked, so it starts where the
-        # impact line says to start; the commit to inspect is the latest one
-        # that touched that same file.
-        details=tuple(d for _, fs in ranked for d in _regression_details(fs)),
+        details=details,
         details_total=len(found),
         commands=_regression_commands(
             [path for path, _ in ranked],
@@ -268,11 +275,12 @@ def _shape_rollup(ranked: list[tuple[str, list]]) -> Action:
     commits = {f.sha for f in found}
     worst_path, worst = ranked[0]
     where = code(worst_path) if len(ranked) == 1 else f"{len(ranked):,} files"
+    details = tuple(d for _, fs in ranked for d in _regression_details(fs))
     return Action(
         rule="fresh_regressions",
         tier="plan",
         horizons=("week",),
-        severity="medium",
+        severity=_details_severity(details, "medium"),
         title=(
             f"Tidy the code shape this week's commits left: "
             f"{plural(len(found), 'finding')} in {where}"
@@ -303,7 +311,7 @@ def _shape_rollup(ranked: list[tuple[str, list]]) -> Action:
         evidence_total=len(found),
         includes=tuple(path for path, _ in ranked[:10]),
         fingerprint=fingerprint("shape", len(found) // 10),
-        details=tuple(d for _, fs in ranked for d in _regression_details(fs)),
+        details=details,
         details_total=len(found),
         commands=_regression_commands(
             [path for path, _ in ranked],
@@ -317,7 +325,7 @@ def _coverage_fact(f: FileFacts, facts: RepoFacts) -> WhyFact:
         basis = "measured"
         value = f"{f.line_coverage_pct:.0f}%"
         if facts.coverage.status == "stale":
-            value += " (older report)"
+            value += " (measured at an earlier commit)"
         return WhyFact("line coverage", value, basis)
     if facts.coverage.status == "unknown":
         return WhyFact("line coverage", "Unknown, no report", "unknown")
@@ -689,8 +697,13 @@ def fix_first(facts: RepoFacts, ctx: RepoContext) -> RuleOutcome:
             continue
         effort = _effort(item.effort.bucket)
         confidence = "high" if item.confidence.level == "high" else "medium"
-        severity = "high" if tier == "act_now" else "medium"
-        ceiling = min(ceiling, shared_priority(item.value, severity, confidence, effort))
+        tier_severity = "high" if tier == "act_now" else "medium"
+        # A finding item's severity fact is its evidence; a performance or
+        # refactoring item carries none and reads its tier. Order stays the tier's.
+        severity = evidence_severity(
+            (f.value for f in item.facts if f.label == "severity"), tier_severity
+        )
+        ceiling = min(ceiling, shared_priority(item.value, tier_severity, confidence, effort))
         target = item.target
         symbol = target.symbol
         actions.append(

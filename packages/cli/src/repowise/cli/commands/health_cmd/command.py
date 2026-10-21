@@ -604,33 +604,40 @@ def _render_headline(kpis: dict[str, Any], code_shape: bool, unanalysed: int) ->
         BAND_LABEL,
         BAND_TERMINAL_COLOR,
         analysed_note,
+        band_for,
         headline_band,
     )
 
+    share = kpis.get("analysed_share")
+
+    def banded(label: str, score: Any, band: str | None) -> str:
+        # Every score printed carries its band, so a Fair figure never sits
+        # unlabelled beside a Good one.
+        tag = ""
+        if band is not None:
+            color = BAND_TERMINAL_COLOR[band]
+            tag = f" [[{color}]{BAND_LABEL[band]}[/{color}]]"
+        return f"{label}: [bold]{score if score is not None else '?'}[/bold]/10{tag}"
+
     avg = kpis.get("average_health")
-    band_str = ""
-    band = headline_band(avg, kpis.get("analysed_share"))
-    if band is not None:
-        band_color = BAND_TERMINAL_COLOR[band]
-        band_str = f" [[{band_color}]{BAND_LABEL[band]}[/{band_color}]]"
+    avg_band = headline_band(avg, share)
+    parts = [banded("Code health", avg, avg_band)]
     # Production code beside the all-files figure, while tests are in it.
     production = kpis.get("production_average")
     has_tests = (kpis.get("production_file_count") or 0) < (kpis.get("file_count") or 0)
-    production_str = (
-        f"Production code: [bold]{production}[/bold]/10 · "
-        if production is not None and has_tests
-        else ""
-    )
+    if production is not None and has_tests:
+        parts.append(banded("Production code", production, headline_band(production, share)))
     # A repo with no recent churn has no hotspots, so no hotspot figure.
     hotspot = kpis.get("hotspot_health")
-    hotspot_str = f"Hotspot: [bold]{hotspot}[/bold]/10 · " if hotspot is not None else ""
-    console.print(
-        f"\nCode health: [bold]{avg if avg is not None else '?'}[/bold]/10{band_str} · "
-        f"{production_str}"
-        f"{hotspot_str}"
-        f"Worst: [bold]{kpis.get('worst_performer_score') or '?'}[/bold]/10 "
-        f"({kpis.get('worst_performer_path') or 'n/a'})"
+    if hotspot is not None:
+        parts.append(banded("Hotspot", hotspot, headline_band(hotspot, share)))
+    # One file's score takes the file's band, withheld with the headline's.
+    worst = kpis.get("worst_performer_score")
+    parts.append(
+        banded("Worst", worst, band_for(worst) if worst is not None and avg_band else None)
+        + f" ({kpis.get('worst_performer_path') or 'n/a'})"
     )
+    console.print("\n" + " · ".join(parts))
     if code_shape:
         console.print("[dim]Counting code shape only. Change history is left out.[/dim]")
     if unanalysed:

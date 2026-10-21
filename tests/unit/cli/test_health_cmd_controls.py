@@ -180,6 +180,7 @@ def test_a_mostly_unanalysed_repo_gets_no_band_in_any_scope() -> None:
     for args in ((), ("--scope", "production")):
         out = _mostly_unanalysed_output(*args)
         assert "Code health: 10.0/10 ·" in out, args
+        # No band anywhere on the line, the worst file's included.
         assert "Excellent" not in out, args
         assert "analysed 4 of 435 code files" in out, args
 
@@ -192,7 +193,10 @@ def test_the_headline_names_production_code_while_tests_are_in_it() -> None:
         return console.file.getvalue()
 
     base = {"average_health": 8.0, "production_average": 6.0, "file_count": 2}
-    assert "Production code: 6.0/10 · Worst:" in headline(**base, production_file_count=1)
+    # Every score carries its band: 6.0 is Fair beside a Good headline.
+    assert "[Good] · Production code: 6.0/10 [Fair] · Worst:" in headline(
+        **base, production_file_count=1
+    )
     # Narrowed to production, the two figures are one.
     narrowed = headline(**base, production_file_count=2)
     assert "Production code" not in narrowed and "[Good] · Worst:" in narrowed
@@ -205,7 +209,8 @@ def test_the_headline_names_hotspot_health_only_when_there_is_one() -> None:
             health_module._render_headline(kpis, False, 0)
         return console.file.getvalue()
 
-    assert "Hotspot: 6.5/10 · Worst:" in headline(average_health=8.0, hotspot_health=6.5)
+    out = headline(average_health=8.0, hotspot_health=6.5, worst_performer_score=1.0)
+    assert "Hotspot: 6.5/10 [Fair] · Worst: 1.0/10 [At risk]" in out
     assert "Hotspot" not in headline(average_health=8.0, hotspot_health=None)
 
 

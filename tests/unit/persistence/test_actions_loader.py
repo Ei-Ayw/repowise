@@ -223,8 +223,9 @@ async def test_load_actions_view_composes_every_store(async_session) -> None:
     perf, shape = sorted(week["fresh_regressions"], key=lambda a: a["tier"])
     assert (perf["tier"], perf["target"]["path"]) == ("act_now", "src/repo.py")
     assert perf["title"] == "Fix the performance regression in `load` in `src/repo.py`"
+    # Planned, at its finding's severity.
     assert (shape["tier"], shape["severity"], shape["target"]["path"]) == (
-        "plan", "medium", "src/new.py"
+        "plan", "high", "src/new.py"
     )
     assert shape["evidence_ids"] == ["recent"]
 
