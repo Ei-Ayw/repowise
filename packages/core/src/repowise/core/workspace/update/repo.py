@@ -248,7 +248,7 @@ async def _incremental_repo_update(
         alias=alias,
         updated=True,
         file_count=file_count,
-        symbol_count=sum(len(pf.symbols) for pf in parsed_files),
+        symbol_count=sum(pf.symbol_count for pf in parsed_files),
         kg_state=_export_kg_state(repo_path, alias, kg),
         working_tree_paths=working_tree_paths,
         git_history_refreshed=bool(full_git_summaries) and "Git persist" not in failed_steps,

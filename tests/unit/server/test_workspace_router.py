@@ -247,6 +247,7 @@ def _create_workspace_repo_db(
                 symbol_count INTEGER DEFAULT 0
             );
             CREATE TABLE wiki_pages (id TEXT PRIMARY KEY, confidence REAL);
+            CREATE TABLE wiki_symbols (id TEXT PRIMARY KEY);
             CREATE TABLE git_metadata (
                 id TEXT PRIMARY KEY,
                 churn_percentile REAL,
@@ -264,6 +265,7 @@ def _create_workspace_repo_db(
                 ('src/a.py::Foo', 'symbol', 'python', 0),
                 ('src/a.py::Foo.bar', 'symbol', 'python', 0),
                 ('src/b.py::baz', 'symbol', 'python', 0);
+            INSERT INTO wiki_symbols (id) VALUES ('sym-foo'), ('sym-bar'), ('sym-baz');
             INSERT INTO wiki_pages (id, confidence) VALUES
                 ('page-a', 0.8),
                 ('page-b', 0.6);
@@ -944,6 +946,7 @@ class TestQueryRepoStats:
                     symbol_count INTEGER DEFAULT 0
                 );
                 CREATE TABLE wiki_pages (id TEXT PRIMARY KEY, confidence REAL);
+                CREATE TABLE wiki_symbols (id TEXT PRIMARY KEY);
                 CREATE TABLE git_metadata (
                     id TEXT PRIMARY KEY,
                     is_hotspot INTEGER NOT NULL DEFAULT 0,
@@ -980,6 +983,15 @@ class TestQueryRepoStats:
         stats = workspace._query_repo_stats(db_path)
 
         assert stats["hotspot_count"] == 2
+
+    def test_symbol_count_is_the_symbol_index(self, tmp_path: Path) -> None:
+        """The figure `/api/repos/{id}/stats` reports: symbol index rows, not
+        the per-file emission counts (5 here)."""
+        _create_workspace_repo_db(tmp_path, "backend")
+
+        stats = workspace._query_repo_stats(tmp_path / "backend" / ".repowise" / "wiki.db")
+
+        assert stats["symbol_count"] == 3
 
     def test_hotspot_count_zero_when_no_hotspots(self, tmp_path: Path) -> None:
         db_path = tmp_path / ".repowise" / "wiki.db"

@@ -752,6 +752,12 @@ class ParsedFile:
     # resolution tiers. They become ``references`` edges, not ``calls``.
     references: list[CallSite] = field(default_factory=list)
 
+    @property
+    def symbol_count(self) -> int:
+        """Distinct symbols. An overload set or a re-declaration shares one id,
+        and the graph and ``wiki_symbols`` both store it once."""
+        return len({sym.id for sym in self.symbols})
+
 
 def symbol_id_language(parsed_files: dict[str, ParsedFile], symbol_id: str) -> str | None:
     """Language of the file a symbol ID belongs to, or ``None`` if unparsed.

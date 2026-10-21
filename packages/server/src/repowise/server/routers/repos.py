@@ -394,13 +394,7 @@ async def get_repo_stats(
         ),
         0,
     )
-    symbol_count = int(
-        await _scalar_or(
-            session,
-            select(func.sum(GraphNode.symbol_count)).where(GraphNode.repository_id == repo_id),
-            0,
-        )
-    )
+    symbol_count = await crud.count_symbols(session, repo_id)
     entry_point_count = await _scalar_or(
         session,
         select(func.count(GraphNode.id)).where(

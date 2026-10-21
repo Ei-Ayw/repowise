@@ -69,6 +69,7 @@ def _query_repo_counts(repo_path: Path) -> tuple[int, int]:
             create_session_factory,
             get_session,
         )
+        from repowise.core.persistence.crud import count_symbols
         from repowise.core.persistence.models import GraphNode, Repository
 
         url = get_db_url_for_repo(repo_path)
@@ -87,7 +88,6 @@ def _query_repo_counts(repo_path: Path) -> tuple[int, int]:
                 if repo_id is None:
                     return 0, 0
 
-                # Count file nodes and symbol nodes
                 file_count_result = await session.execute(
                     sa_select(sa_func.count())
                     .select_from(GraphNode)
@@ -96,17 +96,9 @@ def _query_repo_counts(repo_path: Path) -> tuple[int, int]:
                         GraphNode.node_type == "file",
                     )
                 )
-                symbol_count_result = await session.execute(
-                    sa_select(sa_func.count())
-                    .select_from(GraphNode)
-                    .where(
-                        GraphNode.repository_id == repo_id,
-                        GraphNode.node_type == "symbol",
-                    )
-                )
                 return (
                     file_count_result.scalar_one(),
-                    symbol_count_result.scalar_one(),
+                    await count_symbols(session, repo_id),
                 )
         finally:
             await engine.dispose()

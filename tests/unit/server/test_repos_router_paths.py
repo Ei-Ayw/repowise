@@ -23,7 +23,12 @@ from sqlalchemy.pool import StaticPool
 
 from repowise.core.persistence import crud
 from repowise.core.persistence.database import get_session, init_db
-from repowise.core.persistence.models import GraphNode, HealthFileMetric, Repository
+from repowise.core.persistence.models import (
+    GraphNode,
+    HealthFileMetric,
+    Repository,
+    WikiSymbol,
+)
 from repowise.core.workspace.config import RepoEntry, WorkspaceConfig
 from repowise.server.routers import repos as repos_module
 from tests.unit.server.conftest import create_test_repo
@@ -405,6 +410,17 @@ async def test_stats_counts(client: AsyncClient, session) -> None:
                 node_type="symbol",
                 symbol_count=0,
                 is_entry_point=True,
+            ),
+            *(
+                WikiSymbol(
+                    repository_id=repo["id"],
+                    file_path="a.py",
+                    symbol_id=f"a.py::{name}",
+                    name=name,
+                    qualified_name=name,
+                    kind="function",
+                )
+                for name in ("f", "g")
             ),
         ]
     )

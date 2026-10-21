@@ -160,8 +160,8 @@ def _query_repo_stats(db_path: Path) -> dict:
         row = c.execute("SELECT COUNT(*) FROM graph_nodes WHERE node_type = 'file'").fetchone()
         result["file_count"] = row[0] if row else 0
 
-        # symbol count
-        row = c.execute("SELECT COALESCE(SUM(symbol_count), 0) FROM graph_nodes").fetchone()
+        # The raw-sqlite form of crud.count_symbols: one store per repo here.
+        row = c.execute("SELECT COUNT(*) FROM wiki_symbols").fetchone()
         result["symbol_count"] = int(row[0]) if row else 0
 
         # page count

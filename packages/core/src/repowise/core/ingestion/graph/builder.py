@@ -278,7 +278,7 @@ class GraphBuilder(MetricsMixin, ResolveMixin, EdgesMixin, SerializeMixin, Rehyd
             path,
             node_type="file",
             language=parsed.file_info.language,
-            symbol_count=len(parsed.symbols),
+            symbol_count=parsed.symbol_count,
             has_error=bool(parsed.parse_errors),
             is_test=parsed.file_info.is_test,
             is_entry_point=parsed.file_info.is_entry_point,

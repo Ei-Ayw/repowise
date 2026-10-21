@@ -95,12 +95,7 @@ async def stat_strip(session: AsyncSession, repo_id: str) -> dict:
             GraphNode.repository_id == repo_id, GraphNode.node_type == "file"
         ),
     )
-    symbol_count = int(
-        await session.scalar(
-            select(func.sum(GraphNode.symbol_count)).where(GraphNode.repository_id == repo_id)
-        )
-        or 0
-    )
+    symbol_count = await crud.count_symbols(session, repo_id)
     entry_point_count = await _count(
         session,
         select(func.count(GraphNode.id)).where(
