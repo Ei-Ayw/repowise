@@ -344,6 +344,42 @@ export const BIOMARKER_GLOSSARY: Record<string, BiomarkerInfo> = {
     description:
       "A data-dependent loop nested inside another (O(n^2)) in a hot, central function. Advisory / informational — surfaced only where centrality ranking says it is worth a look; check the inner bound or use a set/map lookup if it is a search.",
   },
+  list_insert_zero_in_loop: {
+    label: BIOMARKER_LABELS.list_insert_zero_in_loop,
+    category: "performance",
+    description:
+      "A Python .insert(0, x) call (a literal 0) inside a loop. On a list, each front insert shifts every element already in it, so the loop is O(n^2). Not flagged when the receiver is reassigned in the loop body or is assigned a deque in the file. A name match: the receiver is not proven to be a list. Use collections.deque.appendleft, or append and reverse once after the loop.",
+  },
+  pd_concat_in_loop: {
+    label: BIOMARKER_LABELS.pd_concat_in_loop,
+    category: "performance",
+    description:
+      "A pd.concat (or pandas.concat) call inside a loop. When the loop grows one frame this way, each call copies everything accumulated so far, which is O(n^2). Whether the result is accumulated is not checked. Collect the pieces in a list and call pd.concat once after the loop.",
+  },
+  pandas_iterrows_in_loop: {
+    label: BIOMARKER_LABELS.pandas_iterrows_in_loop,
+    category: "performance",
+    description:
+      "A for loop driven by df.iterrows() in a file that imports pandas. iterrows builds a new Series for every row, far slower than a vectorized column operation. Vectorize the work, or use itertuples() when row access is unavoidable. A name match: a non-pandas iterrows method in such a file is flagged too.",
+  },
+  json_parse_in_loop: {
+    label: BIOMARKER_LABELS.json_parse_in_loop,
+    category: "performance",
+    description:
+      "A JSON.parse(JSON.stringify(x)) deep clone inside a loop, which serializes and re-parses the whole value every iteration. Use structuredClone, or clone once outside the loop. A bare JSON.parse or JSON.stringify per iteration is not flagged, since each pass usually handles a different payload.",
+  },
+  array_spread_in_reduce: {
+    label: BIOMARKER_LABELS.array_spread_in_reduce,
+    category: "performance",
+    description:
+      "A .reduce call whose inline callback spreads its first parameter, the accumulator, into a new array or object literal ([...acc, x] or {...acc, k: v}). Every step copies everything gathered so far, so the fold is O(n^2). Push into the accumulator (or set the key) and return it.",
+  },
+  goroutine_in_unbounded_loop: {
+    label: BIOMARKER_LABELS.goroutine_in_unbounded_loop,
+    category: "performance",
+    description:
+      "A Go `go` statement directly inside a two-variable for k, v := range loop: one goroutine per element, with nothing bounding how many run at once. Not flagged in a single-variable range, a bare for {} or a condition loop, or when a send to a local buffered channel directly before the spawn, received inside the goroutine, bounds it. Use a worker pool, a semaphore channel or an errgroup with a limit.",
+  },
   sql_high_complexity: {
     label: BIOMARKER_LABELS.sql_high_complexity,
     category: "sql",

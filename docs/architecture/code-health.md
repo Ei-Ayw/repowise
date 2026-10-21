@@ -180,7 +180,7 @@ the defect weight (§6.1), "maint" the maintainability and "perf" the performanc
 | `list_insert_zero_in_loop` | Performance | `list.insert(0, x)` in a loop | Medium; Python | perf 0.6 |
 | `pd_concat_in_loop` | Performance | `pd.concat` accumulating in a loop | Medium; Python | perf 0.6 |
 | `pandas_iterrows_in_loop` | Performance | `df.iterrows()` | Medium; Python | perf 0.6 |
-| `json_parse_in_loop` | Performance | JSON parse or stringify per iteration | Low; JavaScript, TypeScript | perf 0.4 |
+| `json_parse_in_loop` | Performance | A `JSON.parse(JSON.stringify(x))` deep clone per iteration | Low; JavaScript, TypeScript | perf 0.4 |
 | `array_spread_in_reduce` | Performance | `[...acc]` inside `reduce` | Medium; JavaScript, TypeScript | perf 0.5 |
 | `goroutine_in_unbounded_loop` | Performance | A goroutine per range element | Medium; Go | perf 0.4 |
 

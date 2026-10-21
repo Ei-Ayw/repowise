@@ -250,8 +250,8 @@ _TEMPLATES: dict[str, str] = {
         "iteration."
     ),
     "json_parse_in_loop": (
-        "Parse once. Hoist the parse or stringify out of the loop, and replace a "
-        "JSON round-trip clone with structuredClone."
+        "Clone without the JSON round-trip. Use structuredClone, or clone once "
+        "outside the loop if every iteration copies the same value."
     ),
     "membership_test_against_list_in_loop": (
         "Look up in a set. Build a set from the list once before the loop and "
