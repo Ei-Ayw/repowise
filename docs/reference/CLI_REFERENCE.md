@@ -1031,6 +1031,10 @@ Every subcommand takes `--format` (`table` default, or `json`) and an optional `
 | `--source` | `adr`, `cli`, `comment`, `commit`, `conventions`, `git_archaeology`, `inline_marker`, `llm_inferred`, `pr`, `session`, `all`. | `all` |
 | `--proposed` | `--status proposed`. | off |
 | `--stale-only` | Only stale. | off |
+| `--limit` | Max rows listed. | `100` |
+| `--all` | Every matching row; overrides `--limit`. | off |
+
+- The table ends with `Showing N of M decisions` when rows were cut, else `M decisions.`; JSON carries `total` (rows matching the filters) and `truncated`.
 
 **Capture control**
 

@@ -554,6 +554,14 @@ async def _embed_decision(
 )
 @click.option("--proposed", is_flag=True, default=False, help="Show only proposed decisions.")
 @click.option("--stale-only", is_flag=True, default=False, help="Show only stale decisions.")
+@click.option(
+    "--limit",
+    type=click.IntRange(min=1),
+    default=100,
+    show_default=True,
+    help="Max rows listed.",
+)
+@click.option("--all", "show_all", is_flag=True, default=False, help="List every matching row.")
 @format_option()
 def decision_list(
     path: str | None,
@@ -561,6 +569,8 @@ def decision_list(
     source: str,
     proposed: bool,
     stale_only: bool,
+    limit: int,
+    show_all: bool,
     fmt: str,
 ) -> None:
     """List architectural decision records."""
@@ -573,16 +583,34 @@ def decision_list(
         )
     )
 
+    # Narrowed before the cut so --stale-only and the total cover every row,
+    # not just the first page.
     decisions = _narrow(decisions, proposed=proposed, stale_only=stale_only)
+    total = len(decisions)
+    shown = decisions if show_all else decisions[:limit]
 
     if fmt == "json":
-        emit_json({"repo": str(repo_path), "decisions": [_listed_json(d) for d in decisions]})
+        emit_json(
+            {
+                "repo": str(repo_path),
+                "total": total,
+                "truncated": len(shown) < total,
+                "decisions": [_listed_json(d) for d in shown],
+            }
+        )
         return
 
-    if not decisions:
+    if not shown:
         console.print("[dim]No decisions found.[/dim]")
         return
-    _print_decision_table(decisions)
+    _print_decision_table(shown)
+    if len(shown) < total:
+        console.print(
+            f"[dim]Showing {len(shown)} of {total} decisions; "
+            "--limit N or --all lists more.[/dim]"
+        )
+    else:
+        console.print(f"[dim]{total} decisions.[/dim]")
 
 
 def _narrow(decisions: list, *, proposed: bool, stale_only: bool) -> list:
@@ -619,7 +647,9 @@ async def _query_decisions(repo_path: Path, *, status: str | None, source: str |
             status=status,
             source=source,
             include_proposed=True,
-            limit=100,
+            # Every row: the command counts and narrows them before cutting a
+            # page. Fine at a few thousand records; a COUNT query is the upgrade.
+            limit=None,
         )
 
 
@@ -635,6 +665,7 @@ _STATUS_COLORS = {
 def _print_decision_table(decisions: list) -> None:
     table = Table(title="Architectural Decisions")
     table.add_column("ID", style="dim", width=8)
+    # Wraps rather than cuts: the title is the record's name.
     table.add_column("Title", max_width=40)
     table.add_column("Status")
     table.add_column("Source", style="dim")
@@ -648,7 +679,7 @@ def _print_decision_table(decisions: list) -> None:
         created = d.created_at.strftime("%Y-%m-%d") if d.created_at else ""
         table.add_row(
             d.id[:8],
-            d.title[:40],
+            d.title,
             f"[{color}]{d.status}[/{color}]",
             d.source,
             f"{d.confidence:.0%}",
