@@ -212,7 +212,8 @@ async def test_stats_file_count_excludes_symbol_nodes(client: AsyncClient, sessi
     state printed verbatim as "N files".
     """
     from repowise.core.persistence.crud import upsert_repository
-    from repowise.core.persistence.models import GraphNode, WikiSymbol
+    from repowise.core.persistence.models import GraphNode
+    from tests.unit.persistence.helpers import make_wiki_symbol
 
     repo = await upsert_repository(session, name="counts", local_path="/tmp/counts")
     for i in range(2):
@@ -234,17 +235,7 @@ async def test_stats_file_count_excludes_symbol_nodes(client: AsyncClient, sessi
                     node_type="symbol",
                 )
             )
-        for j in range(5):
-            session.add(
-                WikiSymbol(
-                    repository_id=repo.id,
-                    file_path=f"src/mod{i}.py",
-                    symbol_id=f"src/mod{i}.py::sym{j}",
-                    name=f"sym{j}",
-                    qualified_name=f"sym{j}",
-                    kind="function",
-                )
-            )
+        session.add_all(make_wiki_symbol(repo.id, f"src/mod{i}.py", f"sym{j}") for j in range(5))
     await session.commit()
 
     data = (await client.get(f"/api/repos/{repo.id}/stats")).json()

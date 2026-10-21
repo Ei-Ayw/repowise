@@ -21,9 +21,8 @@ from repowise.core.persistence.models import (
     GitMetadata,
     GraphNode,
     HealthSnapshot,
-    WikiSymbol,
 )
-from tests.unit.persistence.helpers import make_page_kwargs
+from tests.unit.persistence.helpers import make_page_kwargs, make_wiki_symbol
 
 
 async def _register(client: AsyncClient, name: str) -> dict:
@@ -63,17 +62,9 @@ async def _seed(session, repo_id: str, *, files: int, symbols_per_file: int = 3)
                     symbol_count=0,
                 )
             )
-        for j in range(symbols_per_file):
-            session.add(
-                WikiSymbol(
-                    repository_id=repo_id,
-                    file_path=f"src/mod{i}.py",
-                    symbol_id=f"src/mod{i}.py::sym{j}",
-                    name=f"sym{j}",
-                    qualified_name=f"sym{j}",
-                    kind="function",
-                )
-            )
+        session.add_all(
+            make_wiki_symbol(repo_id, f"src/mod{i}.py", f"sym{j}") for j in range(symbols_per_file)
+        )
         session.add(
             GitMetadata(
                 repository_id=repo_id,
