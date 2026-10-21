@@ -2211,6 +2211,7 @@ export interface FixStep {
   signature?: string | null;
   call?: string | null;
   command?: string | null;
+  notes?: string[];
 }
 
 export interface FixTarget {

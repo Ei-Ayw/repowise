@@ -14,10 +14,18 @@ alone or joined by ``||``. ``typeof``, ``instanceof`` and ``Array.isArray``
 narrow to a type the declaration does not name, so those are reported with no
 arms: the plan says the parameter needs the narrowed type instead of writing
 one.
+
+A test of a property (``if (!tc.result) continue;``, or an ``if`` / ``while``
+/ ``switch`` holding the span) narrows the path ``tc.result``, not ``tc``: no
+parameter type a caller's ``tc`` satisfies keeps it. :func:`property_narrowings`
+names the span's inputs whose narrowed path the span reads, and any input a
+literal comparison may discriminate (``tc.kind === "done"``), for the planner
+to refuse. An ordering or arithmetic test (``xs.length > 0``) narrows nothing.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -32,6 +40,10 @@ if TYPE_CHECKING:
 _FALSY = frozenset({"undefined", "null", "false"})
 _NULLISH = frozenset({"undefined", "null"})
 _EQUALITY = {"==": _NULLISH, "===": None}
+_MEMBER_KINDS = frozenset({"member_expression", "subscript_expression"})
+_EQUALITY_OPS = frozenset({"==", "===", "!=", "!=="})
+# A unit type a union may be discriminated by; ``null`` / ``undefined`` narrow the path.
+_LITERALS = frozenset({"string", "number", "true", "false", "template_string"})
 _EXITS = frozenset({"return_statement", "throw_statement", "continue_statement", "break_statement"})
 
 
@@ -54,14 +66,76 @@ def narrowings(
 ) -> dict[str, Narrowing]:
     """Per name in *names*, the nearest guard narrowing it over lines
     *start*..*end* (module docstring)."""
-    stmts = span_statements(fn_node, start, end, lmap)
     out: dict[str, Narrowing] = {}
+    for sib in _statements_above(fn_node, lmap, start, end):
+        _add_guard(sib, lmap, end, names, def_lines, out)
+    return out
+
+
+def property_narrowings(
+    fn_node: Node | None,
+    lmap: LanguageNodeMap,
+    start: int,
+    end: int,
+    names: set[str],
+    def_lines: dict[str, list[int]],
+) -> dict[str, int]:
+    """Per name in *names*, the line of the nearest test narrowing one of its
+    properties for lines *start*..*end* (module docstring): an exiting guard
+    above them, or a statement holding them. Nothing may rebind the name
+    between the test and *end*."""
+    stmts = span_statements(fn_node, start, end, lmap)
+    read = "\n".join(_text(st) for st in stmts)
+    above = _statements_above(fn_node, lmap, start, end)
+    tests = [(sib, exiting_guard(sib, lmap, _EXITS)) for sib in above]
+    tests += [(holder, _condition(holder)) for holder in _holders(fn_node, stmts)]
+    out: dict[str, int] = {}
+    for st, condition in sorted(tests, key=lambda t: -t[0].start_point[0]):
+        for name, path in _property_tests(condition) if condition is not None else ():
+            if name not in names or name in out or (path and not _reads_path(read, path)):
+                continue
+            if not any(st.start_point[0] + 1 < ln <= end for ln in def_lines.get(name, ())):
+                out[name] = st.start_point[0] + 1
+    return out
+
+
+def _holders(fn_node: Node | None, stmts: list[Node]) -> list[Node]:
+    """The statements between *fn_node* and the span that hold it."""
+    out = []
+    node = stmts[0].parent if stmts else None
+    while node is not None and node is not fn_node:
+        if _condition(node) is not None:
+            out.append(node)
+        node = node.parent
+    return out
+
+
+def _condition(node: Node) -> Node | None:
+    """An ``if`` / ``while`` / ``do`` test or a ``switch`` subject; None for anything else."""
+    if node.type in ("if_statement", "while_statement", "do_statement"):
+        return node.child_by_field_name("condition")
+    return node.child_by_field_name("value") if node.type == "switch_statement" else None
+
+
+def _reads_path(text: str, path: str) -> bool:
+    """Whether *text* reads *path* (``tc.result``, ``tc?.result``) itself, not a
+    longer name it prefixes."""
+    plain = re.escape(path)
+    return re.search(rf"(?<![\w$.]){plain}(?![\w$])", text.replace("?.", ".")) is not None
+
+
+def _statements_above(
+    fn_node: Node | None, lmap: LanguageNodeMap, start: int, end: int
+) -> list[Node]:
+    """The statements before the span in each block holding it, nearest first."""
+    stmts = span_statements(fn_node, start, end, lmap)
+    out: list[Node] = []
     node = stmts[0] if stmts else None
     while node is not None and node.parent is not None and node is not fn_node:
         if node.parent.type in lmap.block_kinds:
             sib = node.prev_named_sibling
             while sib is not None:
-                _add_guard(sib, lmap, end, names, def_lines, out)
+                out.append(sib)
                 sib = sib.prev_named_sibling
         node = node.parent
     return out
@@ -171,6 +245,48 @@ def _typed_names(expr: Node) -> list[str]:
     return out
 
 
+def _property_tests(expr: Node) -> list[tuple[str, str | None]]:
+    """``(root, path)`` per property *expr* tests (``("tc", "tc.result")`` for
+    ``!tc.result``); path None when a literal comparison may narrow the whole
+    root (a discriminant). A callee, an ordering or an arithmetic operand is
+    not a test of it."""
+    out: list[tuple[str, str | None]] = []
+    stack = [expr]
+    while stack:
+        node = stack.pop()
+        if node.type not in _MEMBER_KINDS:
+            stack.extend(node.named_children)
+            continue
+        root = node
+        while root.type in _MEMBER_KINDS and root.child_by_field_name("object") is not None:
+            root = _peel(root.child_by_field_name("object"))
+        role = _operand_role(node)
+        if root.type == "identifier" and role != "none":
+            out.append((_text(root), None if role == "discriminant" else _text(node).replace("?.", ".")))
+    return out
+
+
+def _operand_role(node: Node) -> str:
+    """How a property path's test uses it: ``none`` (a callee, an ordering or
+    arithmetic operand), ``discriminant`` (compared with a literal), else ``path``."""
+    parent = node.parent
+    while parent is not None and parent.type == "parenthesized_expression":
+        node, parent = parent, parent.parent
+    if parent is None:
+        return "path"
+    if parent.type == "switch_statement":
+        return "discriminant"
+    if parent.type == "call_expression" and parent.child_by_field_name("function") == node:
+        return "none"
+    if parent.type != "binary_expression":
+        return "path"
+    op = _operator(parent)
+    if op in _EQUALITY_OPS:
+        other = parent.child_by_field_name("right" if parent.child_by_field_name("left") == node else "left")
+        return "discriminant" if other is not None and _peel(other).type in _LITERALS else "path"
+    return "path" if op in ("&&", "||", "??", "instanceof", "in") else "none"
+
+
 def _peel(node: Node) -> Node:
     while node.type == "parenthesized_expression" and node.named_children:
         node = node.named_children[0]
@@ -186,4 +302,4 @@ def _text(node: Node | None) -> str:
     return (node.text or b"").decode("utf-8", "replace") if node is not None else ""
 
 
-__all__ = ["Narrowing", "narrowed", "narrowings"]
+__all__ = ["Narrowing", "narrowed", "narrowings", "property_narrowings"]

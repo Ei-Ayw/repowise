@@ -250,8 +250,9 @@ function Steps({
   );
 }
 
-/** What a step writes (a helper's header, the call that replaces the span)
- * and the command that checks it when it differs from the item's. */
+/** What a step writes (a helper's header, the call that replaces the span),
+ * the plan's notes on what that code cannot say, and the command that checks
+ * it when it differs from the item's. */
 function StepCode({ step }: { step: FixStep }) {
   const language = getLanguageFromPath(step.file_path);
   return (
@@ -275,6 +276,15 @@ function StepCode({ step }: { step: FixStep }) {
         />
       ) : null}
       <PlaceholderHint texts={[step.signature ?? "", step.call ?? ""]} />
+      {step.notes?.length ? (
+        <ul className="mt-1.5 flex list-disc flex-col gap-0.5 pl-4 text-xs text-[var(--color-text-secondary)]">
+          {step.notes.map((note, i) => (
+            <li key={`${i}:${note}`} className="[overflow-wrap:anywhere]">
+              {note}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {step.command ? <CommandLine command={step.command} /> : null}
     </>
   );

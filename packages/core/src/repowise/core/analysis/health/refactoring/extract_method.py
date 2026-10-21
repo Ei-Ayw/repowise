@@ -124,7 +124,7 @@ from .anchors import Scope, anchor_plan, file_source, function_scope
 from .declarative import declarative_flat
 from .helper_naming import ScopeNames, placeholder_names
 from .models import RefactoringContext, RefactoringSuggestion
-from .narrowing import narrowed, narrowings
+from .narrowing import narrowed, narrowings, property_narrowings
 from .registry import RefactoringDetector, register
 
 if TYPE_CHECKING:
@@ -235,6 +235,7 @@ class ExtractMethodDetector(RefactoringDetector):
         prefixes: dict[int, Any] = {}
         refused: set[str] = set()
         candidates = find_extractions(analysis, lmap, receiver, prefixes, refused)
+        candidates = _without_property_narrowed(analysis, candidates, ctx.language, refused)
         _mark_stage_refused(matched, frozenset(refused))
         best = _choose(analysis, candidates, markers)
         staged = _staged(analysis, best, lmap, receiver, ctx.language, matched, prefixes)
@@ -468,7 +469,12 @@ def _staged(
     if max_returns is None or analysis.ccn < _STAGE_MIN_CCN:
         return None
     plan = find_stages(analysis, lmap, receiver, max_returns=max_returns, prefixes=prefixes)
-    _mark_stage_refused(findings, plan.refused)
+    refused = set(plan.refused)
+    # One stage no helper type fits refuses the split: the others compose with it.
+    kept = _without_property_narrowed(analysis, plan.stages, language, refused)
+    if len(kept) < len(plan.stages):
+        plan = replace(plan, stages=())
+    _mark_stage_refused(findings, frozenset(refused))
     if not plan.stages or (best is not None and plan.ccn_removed < 2 * best.ccn_removed):
         return None
     if not all(_worth_extracting(analysis, x, markers) for x in plan.stages):
@@ -755,6 +761,42 @@ def _declared_types(
     return found
 
 
+#: Why a span was refused: a guard above it tests a property of one of its
+#: inputs, which TypeScript narrows for the span and no parameter type keeps.
+PROPERTY_NARROWED = "property_narrowed"
+
+
+def _without_property_narrowed(
+    analysis: FunctionAnalysis,
+    spans: list[Extraction] | tuple[Extraction, ...],
+    language: str | None,
+    refused: set[str],
+) -> list[Extraction]:
+    """*spans* without those a property guard narrows an input of
+    (``narrowing.property_narrowings``); a drop adds its reason to *refused*."""
+    if language not in _NARROWING_LANGUAGES:
+        return list(spans)
+    def_lines = _def_lines(analysis)
+    lmap = get_language_map(language)
+    kept = [
+        x
+        for x in spans
+        if not property_narrowings(
+            analysis.fn_node, lmap, x.start_line, x.end_line, set(x.params), def_lines
+        )
+    ]
+    if len(kept) < len(spans):
+        refused.add(PROPERTY_NARROWED)
+    return kept
+
+
+def _def_lines(analysis: FunctionAnalysis) -> dict[str, list[int]]:
+    out: dict[str, list[int]] = {}
+    for d in analysis.def_use.definitions:
+        out.setdefault(d.var, []).append(d.line)
+    return out
+
+
 def _narrow(
     analysis: FunctionAnalysis, extraction: Extraction, language: str | None, types: dict[str, str]
 ) -> dict[str, int]:
@@ -764,9 +806,7 @@ def _narrow(
     guard's line, for the plan's note."""
     if language not in _NARROWING_LANGUAGES or not extraction.params:
         return {}
-    def_lines: dict[str, list[int]] = {}
-    for d in analysis.def_use.definitions:
-        def_lines.setdefault(d.var, []).append(d.line)
+    def_lines = _def_lines(analysis)
     found = narrowings(
         analysis.fn_node,
         get_language_map(language),

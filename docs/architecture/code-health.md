@@ -489,6 +489,10 @@ runs it over growing data).
 - An Extract Method step finds its lines by their start and end text (line numbers move
   with the first edit); if that text repeats in the file, it says to stay inside the
   function.
+- An Extract Method step carries the plan's `notes`. A stage that takes the shared parameter
+  object shows the object's declaration above its helper and the line building it above
+  its call. A plan missing either is not offered as a Fix first step, since its call would
+  name a variable that does not exist.
 
 ### 6.4 Performance opportunities (`perf/`)
 
