@@ -13,6 +13,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from repowise.core.analysis.external_systems.links import IMPORT_TARGET_LANGUAGES
 from repowise.core.docs_mode import resolve_docs_mode
 from repowise.core.workspace import reads
 from repowise.server.deps import (
@@ -66,6 +67,13 @@ def _require_workspace(ws_config: object) -> None:
         raise HTTPException(status_code=404, detail="Not running in workspace mode")
 
 
+# The raw-sqlite form of ``crud.indexed_file``: these readers open each repo's
+# store directly, without a session.
+_INDEXED_FILE_SQL = "node_type = 'file' AND language NOT IN ({})".format(
+    ", ".join(f"'{lang}'" for lang in IMPORT_TARGET_LANGUAGES)
+)
+
+
 def _query_top_language(db_path: Path) -> str:
     """Return the most common language across graph_nodes in a repo's wiki.db."""
     if not db_path.exists():
@@ -74,7 +82,7 @@ def _query_top_language(db_path: Path) -> str:
         with sqlite3.connect(str(db_path)) as conn:
             row = conn.execute(
                 "SELECT language, COUNT(*) AS cnt FROM graph_nodes "
-                "WHERE node_type = 'file' AND language IS NOT NULL AND language != '' "
+                f"WHERE {_INDEXED_FILE_SQL} AND language IS NOT NULL AND language != '' "
                 "GROUP BY language ORDER BY cnt DESC LIMIT 1"
             ).fetchone()
             return row[0] if row else "unknown"
@@ -156,8 +164,8 @@ def _query_repo_stats(db_path: Path) -> dict:
         if row:
             result["repo_id"] = row[0]
 
-        # file count (graph_nodes)
-        row = c.execute("SELECT COUNT(*) FROM graph_nodes WHERE node_type = 'file'").fetchone()
+        # The raw-sqlite form of crud.count_files.
+        row = c.execute(f"SELECT COUNT(*) FROM graph_nodes WHERE {_INDEXED_FILE_SQL}").fetchone()
         result["file_count"] = row[0] if row else 0
 
         # The raw-sqlite form of crud.count_symbols: one store per repo here.
