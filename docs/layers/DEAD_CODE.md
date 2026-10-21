@@ -175,8 +175,8 @@ before returning it:
 - Otherwise, if the finding is an unused export and another repo depends on
   this one as a package, confidence is cut to 30% of its value with a note to
   verify consumers. The note names a dependent only when its package link
-  covers the file's package or its contract link (an HTTP route, a generated
-  client) points at the file. The cut applies either way, because package links
+  covers the file's package (or records no manifest) or its contract link (an
+  HTTP route, a generated client) points at the file. The cut applies either way, because package links
   can miss a consumer.
 
 The adjustment runs before tiering, so a lowered finding sits in the tier its

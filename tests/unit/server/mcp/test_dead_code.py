@@ -128,6 +128,12 @@ class _EveryFileConsumed:
     def get_repos_depending_on(self, repo_alias):
         return ["web"]
 
+    def get_package_consumers(self, repo_alias):
+        return []
+
+    def get_contract_links_as_provider(self, repo_alias, file_path):
+        return []
+
 
 @pytest.mark.asyncio
 async def test_cross_repo_cut_reaches_summary_and_rollups(setup_mcp, monkeypatch):
