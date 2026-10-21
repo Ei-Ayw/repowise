@@ -57,9 +57,7 @@ def compute_staleness(
         # `decision health` reports it as unscoped rather than fresh.
         return 0.0
 
-    created = _as_aware_utc(_coerce_dt(decision_created_at)) if decision_created_at else None
-    if created is not None and landed_at is not None:
-        created = max(created, _as_aware_utc(landed_at))
+    created = _anchor(decision_created_at, landed_at)
     changed = 0
     for fp in affected_files:
         meta = git_meta_map.get(fp)
@@ -73,6 +71,14 @@ def compute_staleness(
             changed += 1
 
     return round(changed / len(affected_files), 3)
+
+
+def _anchor(created_at: datetime | str | None, landed_at: datetime | None) -> datetime | None:
+    """The later of a record's birth and its landing, or None with no birth."""
+    if not created_at:
+        return None
+    created = _as_aware_utc(_coerce_dt(created_at))
+    return max(created, _as_aware_utc(landed_at)) if landed_at is not None else created
 
 
 def last_code_change(

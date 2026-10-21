@@ -159,14 +159,7 @@ def describe_decision_currency(
     if created_at is None:
         return None
 
-    # Function-local: this module's import budget is the store and nothing heavier.
-    from repowise.core.analysis.decisions.landing import evidence_landings, record_landing
-
-    landing = record_landing(
-        evidence_commits,
-        evidence_landings(root, evidence_commits, timeout=GIT_TIMEOUT_S),
-        created_at,
-    )
+    landing = _landing(root, created_at, evidence_commits)
     count = commits_since(
         root,
         since_commit=landing.sha if landing else None,
@@ -184,6 +177,15 @@ def describe_decision_currency(
         return f"nothing in the {files} it governs has changed since {on}"
     commits = "1 commit" if count == 1 else f"{count} commits"
     return f"the {files} it governs changed in {commits} since {on}"
+
+
+def _landing(root: Path | str, created_at: datetime, evidence_commits: Sequence[str]):
+    """The commit that landed a record written before it, or None."""
+    # Function-local: this module's import budget is the store and nothing heavier.
+    from repowise.core.analysis.decisions.landing import evidence_landings, record_landing
+
+    landings = evidence_landings(root, evidence_commits, timeout=GIT_TIMEOUT_S)
+    return record_landing(evidence_commits, landings, created_at)
 
 
 def recorded_on(birth_at: float) -> str:
