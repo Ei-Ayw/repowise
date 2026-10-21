@@ -52,13 +52,15 @@ very low ([Accuracy and limits](#accuracy-and-limits)); ask for it with `--inclu
 Confidence runs from `0.0` to `1.0` and measures how strong the evidence for
 deadness is. It starts from a base value per kind and can only be lowered:
 
-- **Unreachable files** are scored from git activity. A file untouched for a
-  year or more starts at `1.00`; one still being committed to starts at `0.40`;
-  a file under 30 days old starts at `0.55`, because it is often unfinished.
+- **Unreachable files** are scored from git activity. A file with a commit in
+  the last 90 days starts at `0.40`. Otherwise its last commit sets the start:
+  `1.00` at 365 days or more, `0.90` at 180, `0.80` at 90. A file under 30 days
+  old starts at `0.55`, because it is often unfinished; any other file starts
+  at `0.70`, and one with no recorded git history at `0.50`.
 - **Unused exports** start at `1.00` when the file has importers and none of
   them takes this symbol. When that check is impossible (no importer names
   individual symbols, or the language reaches symbols through a preprocessor)
-  the start is `0.60`. Deprecated symbols start at `0.30`.
+  the start is `0.60`. Deprecated exports start at `0.30`.
 - **Unused internals** start at `0.65`. **Zombie packages** start at `0.50`.
 
 Several caps then pull a finding down to `0.40`, the review tier: a runtime
@@ -75,9 +77,11 @@ finding's evidence saying why.
 | Medium | `0.4` to `0.7` | Likely unused, but something indirect may reach it. Review first. |
 | Low | `< 0.4` | Plausibly used at runtime (dynamic loading, reflection, published API). Investigate first. |
 
-The CLI, the dashboard and `get_dead_code` use the same tier floors, so a
-finding lands in the same tier on every surface. The default `min_confidence`
-is `0.4` everywhere, which hides the low tier unless you ask for it.
+The CLI, the dashboard and `get_dead_code` use the same tier floors. The
+default `min_confidence` is `0.4` everywhere, which hides the low tier unless
+you ask for it. In a workspace, only `get_dead_code` applies the
+[cross-repo cut](#workspaces), after that floor, so it can place a finding in a
+lower tier than the CLI and dashboard do, including below `0.4`.
 
 ### `safe_to_delete`
 
@@ -124,9 +128,10 @@ the floor. An index whose dead-code pass failed also reads as empty; pass
   [CONFIG.md](../reference/CONFIG.md)). An excluded file's own imports leave
   the graph too, so a file only it imported can then surface as unreachable.
 - **In source.** A Java or Kotlin symbol annotated `@SuppressWarnings("unused")`
-  is treated as deliberately unused and is not reported. A symbol marked
-  deprecated (by annotation, or by a `_DEPRECATED`, `_LEGACY` or `_COMPAT`
-  name suffix) drops to `0.30`, below the default floor.
+  is treated as deliberately unused and is not reported. An unused export
+  marked deprecated (by annotation, or by a `_DEPRECATED`, `_LEGACY` or
+  `_COMPAT` name suffix) starts at `0.30`, below the default floor. An unused
+  internal keeps `0.65`, since a private symbol has no outside consumer.
 - **Turning the MCP tool off.** `mcp: {tools: ["-get_dead_code"]}` in
   `.repowise/config.yaml`.
 
@@ -176,8 +181,8 @@ before returning it:
   this one as a package, confidence is cut to 30% of its value with a note to
   verify consumers.
 
-The adjustment runs after tiering, so it lowers the displayed confidence
-without moving a finding between tiers. `repo="all"` merges every workspace
+The adjustment runs before tiering, so a lowered finding sits in the tier its
+new confidence names and is never safe to delete. `repo="all"` merges every workspace
 repo and tags each finding with its alias. The CLI has no cross-repo pass:
 `--repo <alias>` analyzes one repo in isolation (the primary repo by default).
 See [WORKSPACES.md](../scale/WORKSPACES.md) for how cross-repo data is built.
