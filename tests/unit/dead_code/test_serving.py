@@ -271,6 +271,18 @@ def test_package_dependents_are_named_only_where_their_link_reaches() -> None:
     assert not lone[0]["safe_to_delete"]
 
 
+class _UnscopedLookup(_Lookup):
+    def get_package_consumers(self, repo_alias: str) -> list[dict]:
+        return [{"source_repo": "mobile", "target_manifest": ""}]
+
+
+def test_a_package_link_with_no_manifest_names_its_dependent() -> None:
+    # Unknown package scope is not evidence the file sits outside it.
+    lone = [serialize_finding(_row("src/c/six.py", 0.9))]
+    adjust_cross_repo(lone, _UnscopedLookup(), "api")
+    assert "consumed by: mobile." in lone[0]["cross_repo_note"]
+
+
 def test_adjusted_findings_are_tiered_by_their_lowered_confidence() -> None:
     findings = [serialize_finding(r) for r in _ROWS]
     adjust_cross_repo(findings, _Lookup(), "api")
