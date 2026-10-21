@@ -342,7 +342,7 @@ Code-health scores and findings from stored analysis, across defect risk, mainta
 | `counts` | string | `"everything"` | `code_shape` drops the git-derived half of the score |
 | `repo` | string | default repo | `"all"` not supported |
 
-- Pass one of `fix_id`, `finding_id`, `plan_id`, `opportunity_id`; two return `mode: "conflict"`.
+- Pass one of `fix_id`, `finding_id`, `plan_id`, `opportunity_id`; two return `mode: "conflict"`. A miss on an id minted for another selector (a `fix1_` id passed as `plan_id`) carries a `hint` naming the right one.
 - `fix_first` shows five items unless `limit` comes with `only=["fix_first"]`, which pages up to 25.
 - The response is bounded: pair `include` with `only` to keep one block, e.g. `get_health(include=["refactoring"], only=["refactoring_opportunities"])`.
 

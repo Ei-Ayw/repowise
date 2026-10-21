@@ -111,6 +111,16 @@ _BLAST_INCLUDES: dict[str, tuple[str, ...]] = {"graph": ("direct_risks",)}
 #: ``blast`` the ``pr_blast_radius`` dossier, ``changes`` each file's recent
 #: Change Records.
 _INCLUDE_BLOCKS = frozenset(_TARGET_CARD_INCLUDES) | {"blast", "scales", "tests", "changes"}
+#: Blocks only the PR directive builds: without ``changed_files`` they hold nothing.
+_PR_ONLY_INCLUDES = ("tests", "blast")
+
+
+def _name_pr_only_includes(ignored: list[dict], include: set[str]) -> None:
+    """Name the PR-only blocks a targets-only call asked for, so their absence
+    is not read as "no tests" or "no blast radius"."""
+    unused = [block for block in _PR_ONLY_INCLUDES if block in include]
+    if unused:
+        ignored.append({"argument": "include", "values": unused, "requires": "changed_files"})
 
 
 def _drop_opt_in_blocks(response: dict, include: set[str]) -> None:
@@ -557,6 +567,8 @@ async def get_risk(
     )
     _drop_opt_in_blocks(response, include_set)
     drop_echoed_target(response.get("targets"))
+    if not changed_files:
+        _name_pr_only_includes(ignored, include_set)
     attach_ignored_arguments(response, ignored)
     collector.attach(response)
     return response

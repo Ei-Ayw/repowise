@@ -50,6 +50,7 @@ from repowise.server.mcp_server.tool_health.blocks import add_optional_blocks
 from repowise.server.mcp_server.tool_health.dashboard import build_dashboard
 from repowise.server.mcp_server.tool_health.details import (
     _detail_response,
+    _hint_wrong_selector,
     _note_inapplicable_controls,
     _selector_conflict,
 )
@@ -247,6 +248,13 @@ async def get_health(
             recipe="recipe" in req.include_set,
         )
         if detail is not None:
+            _hint_wrong_selector(
+                detail,
+                fix_id=fix_id,
+                finding_id=finding_id,
+                plan_id=plan_id,
+                opportunity_id=opportunity_id,
+            )
             _attach_semantics(detail, req)
             return _note_inapplicable_controls(detail, scope, counts)
         data = await load_health_data(

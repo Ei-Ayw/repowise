@@ -32,6 +32,9 @@ from repowise.server.mcp_server.tool_health.serialize import (
 from repowise.server.services.performance_health import PerformanceHealthService
 from repowise.server.services.refactoring_health import RefactoringHealthService
 
+#: Prefix of the Do next action ids ``get_overview``'s ``next_actions`` hands out.
+_ACTION_ID_PREFIX = "act_"
+
 
 async def _detail_response(
     session: Any,
@@ -85,6 +88,42 @@ async def _detail_response(
     return None
 
 
+#: Id prefixes as minted (fix_first/model.py, finding_identity.py,
+#: refactoring/identity.py and opportunity.py, perf/causal.py), each with the
+#: selector that resolves it. Ordered so ``refac`` never shadows ``refop``.
+_SELECTOR_OF_PREFIX: tuple[tuple[str, str, str], ...] = (
+    ("fix", "fix_id", "fix_first ids (fix1_...)"),
+    (_ACTION_ID_PREFIX, "fix_id", f"next_actions ids ({_ACTION_ID_PREFIX}...)"),
+    ("finding_", "finding_id", "finding ids (finding_...)"),
+    (
+        _REFACTORING_OPPORTUNITY_PREFIX,
+        "opportunity_id",
+        f"refactoring opportunity ids ({_REFACTORING_OPPORTUNITY_PREFIX}...)",
+    ),
+    ("refac", "plan_id", "refactoring plan ids (refac...)"),
+    ("perf", "opportunity_id", "performance opportunity ids (perf...)"),
+)
+
+
+def _wrong_selector_hint(passed: str, value: str) -> str | None:
+    """Name the selector *value*'s prefix belongs to, when it is not *passed*."""
+    for prefix, selector, label in _SELECTOR_OF_PREFIX:
+        if value.startswith(prefix):
+            return f"Pass {label} as {selector}, not {passed}." if selector != passed else None
+    return None
+
+
+def _hint_wrong_selector(result: dict[str, Any], **selectors: str | None) -> None:
+    """On a miss, name the selector the id was minted for. Never resolved under
+    that selector instead: the caller swapped an argument, and answering anyway
+    would hide it."""
+    if result.get("found") or result.get("resolved"):
+        return
+    for name, value in selectors.items():
+        if value and (hint := _wrong_selector_hint(name, value)):
+            result["hint"] = hint
+
+
 async def _lower_priority(session: Any, repository_id: str, finding: Any) -> str | None:
     """The finding's tier reason, measured over its file's open findings as
     the list measured it: file-held rows included, as the list reads them."""
@@ -118,17 +157,9 @@ async def _finding_detail_response(
             targets=[match.file_path] if match else None,
         ),
     }
-    if match is None and finding_id.startswith(("fix", _ACTION_ID_PREFIX)):
-        result["hint"] = (
-            "Pass fix_first ids (fix1_...) and next_actions ids (act_...) "
-            "as fix_id, not finding_id."
-        )
     await _attach_repository_analysis_meta(session, repository, result["_meta"])
     return result
 
-
-#: Prefix of the Do next action ids ``get_overview``'s ``next_actions`` hands out.
-_ACTION_ID_PREFIX = "act_"
 
 _FIX_NOT_FOUND = (
     "get_health() lists the current fix_first ids (fix1_...); "

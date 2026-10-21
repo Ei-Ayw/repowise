@@ -113,6 +113,7 @@ A value outside a closed vocabulary is dropped, so the response is the one you w
 | `get_answer` | `include` | `_meta.ignored_arguments` map: `{"include": [...]}` |
 | `get_health` | `refactoring_*`, `performance_*`, `scope`, `counts` | Top-level map, e.g. `{"counts": "code-shape"}` |
 
+- **`get_risk`:** `include` values `tests` and `blast` without `changed_files` land in one entry with `"requires": "changed_files"`, since only PR mode builds them.
 - **`search_codebase`:** an unknown `mode` runs as `auto`; a `pattern` entry carries `"superseded_by": "query"`.
 - **`get_health`:** a value meant for the other control (`scope="code_shape"`) adds `ignored_arguments_hint`, except on a detail lookup. A misspelled `only` key lands in `unknown_only_keys`; a detail lookup (`finding_id`, `plan_id`, `opportunity_id`) lists `scope` and `counts` there too, since they cannot act on one row.
 
@@ -651,7 +652,7 @@ One ranked queue across refactoring, performance and code-shape work, the same o
 - **`untested_complexity`:** estimated tiers only with `include=["unverified"]`; never both measures.
 - **`doc_drift`:** evidence to check, not a proven defect.
 - **`what_if`:** `ceiling` is the score with no structure deduction (history's cap shrinking with it); `target_out_of_reach` when below 8.0; `fix_all_structure` gains, top 3 `findings`, and `top_fixes` across files. Each fix has `points` (upper bound when its category is capped) and `gain` (`file`, `average`, `hotspot`). `structure_deduction` may include withheld types no fix covers.
-- **`only` aliases:** `biomarkers` -> `findings`, `accuracy` -> `defect_accuracy`, `refactoring` -> `refactoring_plans`. Dimension names land in `unknown_only_keys` with `unknown_only_keys_hint`; for targeted `signals`, name `metrics`.
+- **`only` aliases:** `biomarkers` -> `findings`, `accuracy` -> `defect_accuracy`, `refactoring` -> `refactoring_plans`. Dimension names land in `unknown_only_keys` with `unknown_only_keys_hint`, which names the `include` a missing include-gated key needs; for targeted `signals`, name `metrics`.
 
 ### Refactoring
 
