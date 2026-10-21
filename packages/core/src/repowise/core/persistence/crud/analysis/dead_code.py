@@ -6,7 +6,7 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from repowise.core.analysis.dead_code.deletion_gate import effective_safe_to_delete
@@ -19,7 +19,7 @@ from repowise.core.analysis.dead_code.risk_factors import (
 from repowise.core.analysis.finding_registry import excluded_types
 
 from ...models import DeadCodeFinding, _new_uuid
-from .._shared import _BATCH_SIZE, _finding_file_path
+from .._shared import _BATCH_SIZE, _batch_delete_in, _finding_file_path
 from ..repository import stamp_analysis_ran
 from .shown import gated_counts, shown, ungated
 
@@ -125,15 +125,12 @@ async def save_dead_code_findings(
     findings: list[dict],
 ) -> None:
     """Persist dead code findings, replacing any existing open findings for the repo."""
-    # Delete existing open findings for this repo before saving new ones
-    existing = await session.execute(
-        select(DeadCodeFinding).where(
+    await session.execute(
+        delete(DeadCodeFinding).where(
             DeadCodeFinding.repository_id == repository_id,
             DeadCodeFinding.status == "open",
         )
     )
-    for row in existing.scalars().all():
-        await session.delete(row)
 
     null_lines_as_zero = await _lines_column_rejects_null(session)
     for i in range(0, len(findings), _BATCH_SIZE):
@@ -196,18 +193,7 @@ async def replace_dead_code_findings(
     delete-then-insert with the surviving keys filtered out in Python rather
     than an ``ON CONFLICT`` upsert.
     """
-    existing = await session.execute(
-        select(DeadCodeFinding).where(DeadCodeFinding.repository_id == repository_id)
-    )
-    acted_on: set[tuple] = set()
-    for row in existing.scalars().all():
-        if scope is not None and row.file_path not in scope:
-            continue
-        if row.status == "open":
-            await session.delete(row)
-        else:
-            acted_on.add((row.file_path, row.kind, row.symbol_name))
-    await session.flush()
+    acted_on = await _replace_open_rows(session, repository_id, scope)
 
     writable = [
         f
@@ -221,6 +207,31 @@ async def replace_dead_code_findings(
         session.add_all(_new_rows(batch, repository_id, null_lines_as_zero=null_lines_as_zero))
         await session.flush()
     await stamp_analysis_ran(session, repository_id, "dead_code")
+
+
+async def _replace_open_rows(
+    session: AsyncSession, repository_id: str, scope: frozenset[str] | set[str] | None
+) -> set[tuple]:
+    """Delete the open rows in *scope*; return the (file, kind, symbol) of its acted-on rows.
+
+    Acted-on rows are few, so they are read repo-wide and scoped here.
+    """
+    repo = DeadCodeFinding.repository_id == repository_id
+    acted = await session.execute(
+        select(DeadCodeFinding.file_path, DeadCodeFinding.kind, DeadCodeFinding.symbol_name).where(
+            repo, DeadCodeFinding.status != "open"
+        )
+    )
+    acted_on = {tuple(r) for r in acted if scope is None or r[0] in scope}
+    is_open = DeadCodeFinding.status == "open"
+    if scope is None:
+        await session.execute(delete(DeadCodeFinding).where(repo, is_open))
+    else:
+        await _batch_delete_in(
+            session, DeadCodeFinding, DeadCodeFinding.file_path, scope, prefilter=(repo, is_open)
+        )
+    await session.flush()
+    return acted_on
 
 
 async def get_dead_code_findings(

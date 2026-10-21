@@ -53,11 +53,7 @@ async def save_coverage_files(
 
     p = provenance or CoverageProvenance()
     at = ingested_at or _now_utc()
-    existing = await session.execute(
-        select(CoverageFile).where(CoverageFile.repository_id == repository_id)
-    )
-    for row in existing.scalars().all():
-        await session.delete(row)
+    await session.execute(delete(CoverageFile).where(CoverageFile.repository_id == repository_id))
     if await _ingest_is_single_row(session):
         await session.execute(
             delete(CoverageIngest).where(CoverageIngest.repository_id == repository_id)
