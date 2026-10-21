@@ -13,17 +13,20 @@ from repowise.core.analysis.decisions.lifecycle import is_governing
 from repowise.core.analysis.decisions.scope import binds_to_paths
 from repowise.core.persistence.crud.authority import decision_currencies
 from repowise.core.persistence.database import get_session
-from repowise.core.persistence.models import DecisionRecord
+from repowise.core.persistence.models import DecisionRecord, GitMetadata
 from repowise.core.precedent.currency import describe_decision_currency
 from repowise.server.mcp_server._budget import OmissionCollector
 from repowise.server.mcp_server._code_rationale import mine_rationale as _mine_rationale
 from repowise.server.mcp_server._episodes import episode_evidence
 from repowise.server.mcp_server._helpers import (
+    LIKE_ESCAPE,
+    _build_directory_origin,
     _build_origin_story,
     _compute_alignment,
     _get_exclude_spec,
     _get_repo,
     _resolve_repo_context,
+    escape_like,
     is_excluded,
 )
 from repowise.server.mcp_server._meta import build_meta as _build_meta
@@ -57,7 +60,8 @@ async def _why_path(query: str, repo: str | None) -> dict:
     """Mode 2: query is a path — governing decisions, origin story, alignment."""
     ctx = await _resolve_repo_context(repo)
     collector = OmissionCollector("get_why", repo_root=ctx.path)
-    if is_excluded(query, _get_exclude_spec(ctx.path)):
+    exclude_spec = _get_exclude_spec(ctx.path)
+    if is_excluded(query, exclude_spec):
         return {"query": query, "error": f"'{query}' is excluded by exclude_patterns."}
     async with get_session(ctx.session_factory) as session:
         repository = await _get_repo(session)
@@ -73,7 +77,12 @@ async def _why_path(query: str, repo: str | None) -> dict:
         matched = _records_naming_path(all_decisions, query)
         # A typo or a stale path: nothing to excavate, so say so before the
         # archaeology fallback mines unrelated commits for it.
-        if git_meta is None and not matched and not _maybe_on_disk(ctx.path, query):
+        if (
+            git_meta is None
+            and not matched
+            and not _maybe_on_disk(ctx.path, query)
+            and not await _indexed_under(session, repository.id, query, exclude_spec)
+        ):
             return {
                 "mode": "path",
                 "path": query,
@@ -81,7 +90,7 @@ async def _why_path(query: str, repo: str | None) -> dict:
                 "nor in the indexed git history.",
             }
 
-        # Pre-load all git metadata for cross-file search (used by fallback)
+        # Every file's rows: a directory's history, and the fallback's cross-file search.
         all_git_meta = await _all_git_metadata(session, repository.id)
 
         # A record with no acceptance row is a candidate whatever its status.
@@ -97,8 +106,11 @@ async def _why_path(query: str, repo: str | None) -> dict:
         await _stamp_still_true(governing, matched, ctx.path)
 
         # Every lane: the origin story is evidence, not instruction.
-        origin_story = _build_origin_story(
-            query, git_meta, governing + candidates + retired
+        origin_story = _origin_for(
+            query,
+            git_meta,
+            _rows_under(query, all_git_meta, exclude_spec),
+            governing + candidates + retired,
         )
 
         result_data: dict[str, Any] = {
@@ -160,6 +172,46 @@ def _maybe_on_disk(repo_path: str | Path | None, path: str) -> bool:
     except (OSError, ValueError):
         return False
     return candidate.exists()
+
+
+def _origin_for(
+    path: str, git_meta: Any | None, rows_under: list, governing: list[dict]
+) -> dict:
+    """A file's origin story, or a directory's from the files under it."""
+    if git_meta is not None:
+        return _build_origin_story(path, git_meta, governing)
+    return _build_directory_origin(path.rstrip("/"), rows_under, governing)
+
+
+def _dir_prefix(path: str) -> str:
+    """*path* as a directory prefix of indexed file paths; ``""`` for the root."""
+    clean = path.replace("\\", "/").removeprefix("./").strip("/")
+    return "" if clean in ("", ".") else clean + "/"
+
+
+def _rows_under(path: str, all_git_meta: list, exclude_spec: Any) -> list:
+    """The git rows of the non-excluded files under *path* as a directory."""
+    prefix = _dir_prefix(path)
+    return [
+        m
+        for m in all_git_meta
+        if m.file_path.startswith(prefix) and not is_excluded(m.file_path, exclude_spec)
+    ]
+
+
+async def _indexed_under(
+    session: Any, repository_id: Any, path: str, exclude_spec: Any
+) -> bool:
+    """Whether a non-excluded indexed file lives under *path*, without loading rows."""
+    res = await session.execute(
+        select(GitMetadata.file_path).where(
+            GitMetadata.repository_id == repository_id,
+            GitMetadata.file_path.like(
+                f"{escape_like(_dir_prefix(path))}%", escape=LIKE_ESCAPE
+            ),
+        )
+    )
+    return any(not is_excluded(fp, exclude_spec) for fp in res.scalars())
 
 
 def _records_naming_path(all_decisions: list, path: str) -> list:
@@ -301,6 +353,7 @@ async def _build_target_context(
         all_git_meta_list = await _all_git_metadata(session2, repository.id)
 
         root = served_root(repository, ctx.path)
+        exclude_spec = _get_exclude_spec(ctx.path)
         target_context: dict[str, Any] = {}
         for t in targets:
             target_context[t] = await _target_card(
@@ -310,6 +363,7 @@ async def _build_target_context(
                 all_git_meta_list,
                 root,
                 accepted or set(),
+                _rows_under(t, all_git_meta_list, exclude_spec),
             )
         return target_context
 
@@ -333,6 +387,7 @@ async def _target_card(
     all_git_meta_list: list,
     repo_root: str | None,
     accepted_ids: set[str],
+    rows_under: list,
 ) -> dict[str, Any]:
     """One target's card: its rules, its candidates, its origin, and archaeology."""
     rows = [
@@ -347,14 +402,7 @@ async def _target_card(
     ]
     t_governing = [r for r in rows if r["authority"] == "accepted"]
     t_candidates = [r for r in rows if r["authority"] != "accepted"]
-    origin = (
-        _build_origin_story(t, git_m, t_governing)
-        if git_m
-        else {
-            "available": False,
-            "summary": f"No git history for {t}.",
-        }
-    )
+    origin = _origin_for(t, git_m, rows_under, t_governing)
     ctx_entry: dict[str, Any] = {
         "governing_decisions": t_governing,
         "origin": origin,

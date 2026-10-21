@@ -390,7 +390,7 @@ def _build_origin_story(
     if git_meta is None:
         return {
             "available": False,
-            "summary": f"No git history available for {file_path}.",
+            "summary": f"No git history is indexed for {file_path}.",
         }
 
     authors = json.loads(git_meta.top_authors_json) if git_meta.top_authors_json else []
@@ -439,6 +439,54 @@ def _build_origin_story(
         "key_commits": commits,
         "linked_decisions": linked_decisions,
         "summary": " ".join(parts),
+    }
+
+
+#: Newest stored commits a directory origin lists, across its files; the same
+#: five the origin cap in tool_why/caps.py serves, so none is built to be dropped.
+_DIRECTORY_KEY_COMMITS = 5
+
+
+def _build_directory_origin(
+    dir_path: str,
+    file_metas: list,
+    governing_decisions: list[dict],
+) -> dict:
+    """The origin of a directory from its files' stored git metadata.
+
+    Git metadata is stored per file, so a directory has no commit total, owner
+    or age of its own: summing per-file counts would count a shared commit once
+    per file. Only what holds across files is served: the date span and the
+    stored significant commits, one row per SHA.
+    """
+    if not file_metas:
+        return _build_origin_story(dir_path, None, governing_decisions)
+    firsts = [m.first_commit_at for m in file_metas if m.first_commit_at]
+    lasts = [m.last_commit_at for m in file_metas if m.last_commit_at]
+    first_date = min(firsts).strftime("%Y-%m-%d") if firsts else "unknown"
+    last_date = max(lasts).strftime("%Y-%m-%d") if lasts else "unknown"
+    by_sha: dict[str, dict] = {}
+    for m in file_metas:
+        for c in json.loads(m.significant_commits_json or "[]"):
+            if c.get("sha"):
+                by_sha.setdefault(c["sha"], c)
+    commits = sorted(by_sha.values(), key=lambda c: c.get("date", ""), reverse=True)
+    key_commits = commits[:_DIRECTORY_KEY_COMMITS]
+    return {
+        "available": True,
+        "scope": "directory",
+        "files_with_history": len(file_metas),
+        "first_commit": first_date,
+        "last_commit": last_date,
+        "key_commits": key_commits,
+        # Over the served commits only, so a large directory stays bounded.
+        "linked_decisions": _link_decisions_to_commits(governing_decisions, key_commits),
+        "summary": (
+            f"{dir_path} is a directory: {len(file_metas)} file(s) under it have "
+            f"git history, first commit {first_date}, last commit {last_date}. "
+            "History is stored per file, so there is no commit count or owner for "
+            "the directory itself; pass a file under it for that file's origin."
+        ),
     }
 
 

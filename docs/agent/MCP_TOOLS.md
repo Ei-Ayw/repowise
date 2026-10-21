@@ -284,6 +284,8 @@ Why code is shaped as it is: decision records, falling back to git archaeology a
 
 Modes: a question searches decisions; a path (or `targets` alone) returns `decisions`, `candidates`, `history`, its origin story and `alignment`; `id` resolves one record; no arguments returns the dashboard (stale decisions, conflicts, ungoverned hotspots).
 
+A directory's origin story (`scope: "directory"`) is built from the files under it: how many have history, the first and last commit dates, and their stored key commits, each listed once. Git history is stored per file, so it carries no commit count or owner for the directory.
+
 **Returns** `decisions` (binding), `candidates` (hints, not rules), `history`, `answer_basis` ([fields](../reference/MCP_RESPONSE_FIELDS.md#get_why)).
 
 ```
