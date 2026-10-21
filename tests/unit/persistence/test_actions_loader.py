@@ -328,6 +328,9 @@ async def test_a_test_reaching_through_a_helper_turns_add_tests_into_simplify(as
     facts = await load_repo_facts(async_session, rid)
     assert facts.history_commits == 5
     assert facts.files["src/core.py"].tests_reaching == 0
+    # The lead is measured from its stored details: CCN 44 is worth breaking up.
+    lead = facts.files["src/core.py"].lead
+    assert (lead.function, lead.worth) == ("run", True)
 
     for path, is_test in (
         ("src/core.py", False),

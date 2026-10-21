@@ -5,6 +5,7 @@ tests.
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import datetime, timedelta
 
@@ -90,12 +91,52 @@ def test_fragile_below_80_says_raise_coverage() -> None:
 
 
 def test_fragile_covered_with_lead_says_simplify() -> None:
-    lead = LeadFinding("complex_method", "high", "build", 12, "ccn 20")
+    lead = LeadFinding("complex_method", "high", "build", 12, "CCN 45", worth=True)
     f = _file("src/a.py", line_coverage_pct=91.0, lead=lead)
     (a,) = _run(code.fragile_file, _facts([f])).actions
     assert a.title.startswith("Simplify `build` in `src/a.py`")
     assert a.target_symbol == "build"
     assert a.marker == "complex_method"
+
+
+def test_fragile_lead_not_worth_breaking_up_says_review_and_names_no_finding() -> None:
+    """Ours: call_language_strategies.py at 93% led by coverage_gradient, and
+    health/engine.py led by `__init__` at CCN 10, both read "Simplify"."""
+    for lead in (
+        LeadFinding("coverage_gradient", "low", None, None, "7% of lines uncovered"),
+        LeadFinding("complex_method", "medium", "__init__", 40, "CCN 10"),
+    ):
+        f = _file("src/a.py", line_coverage_pct=93.0, lead=lead)
+        (a,) = _run(code.fragile_file, _facts([f])).actions
+        assert a.title == "Review why fixes keep landing in `src/a.py`: it is tested"
+        assert a.done_when == "Bug-fix commits slow down."
+        assert (a.target_symbol, a.marker, a.details) == (None, None, ())
+        assert a.confidence == "high"
+    reached = _file("src/a.py", lead=lead, tests_reaching=3)
+    (a,) = _run(code.fragile_file, _facts([reached])).actions
+    assert a.title == "Review why fixes keep landing in `src/a.py`: tests reach it"
+    assert a.confidence == "medium"
+
+
+def test_leads_carry_the_shared_break_up_verdict() -> None:
+    from repowise.core.analysis.actions.build import with_leads
+
+    def row(path: str, marker: str, fn: str | None, details: dict) -> dict:
+        return {"file_path": path, "biomarker_type": marker, "severity": "high",
+                "function_name": fn, "line_start": 1, "line_end": 90, "reason": "",
+                "health_impact": 1.0, "details_json": json.dumps(details)}
+
+    files = {p: _file(p) for p in ("src/big.py", "src/small.py", "src/cov.py")}
+    out = with_leads(files, [
+        row("src/big.py", "complex_method", "run", {"ccn": 44, "nloc": 90, "max_nesting": 3}),
+        row("src/small.py", "complex_method", "__init__", {"ccn": 10, "nloc": 30}),
+        row("src/cov.py", "coverage_gradient", None, {}),
+    ])
+    assert {p: (f.lead.biomarker, f.lead.worth) for p, f in out.items()} == {
+        "src/big.py": ("complex_method", True),
+        "src/small.py": ("complex_method", False),
+        "src/cov.py": ("coverage_gradient", False),
+    }
 
 
 def test_fragile_covered_without_lead_is_silent() -> None:
@@ -766,7 +807,7 @@ def test_week_rollup_does_not_hide_a_fragile_file_from_the_quarter() -> None:
 
 
 def test_fragile_id_survives_a_change_of_lead_function() -> None:
-    lead = LeadFinding("complex_method", "high", "a", 1, "")
+    lead = LeadFinding("complex_method", "high", "a", 1, "", worth=True)
     before = _file("src/x.py", fix_commits_90d=9, commits_90d=20, line_coverage_pct=90.0, lead=lead)
     after = replace(before, lead=replace(lead, function="b"))
     ctx = dict(busy_threshold=5, fix_threshold=3)
@@ -808,7 +849,7 @@ def test_rollup_carries_evidence_starting_with_the_worst_file_and_commands() -> 
 # Self-checks: "add tests" needs no test reaching the file; short history
 # ---------------------------------------------------------------------------
 
-_LEAD = LeadFinding("complex_method", "high", "runEmbeddedAttempt", 40, "CCN 90")
+_LEAD = LeadFinding("complex_method", "high", "runEmbeddedAttempt", 40, "CCN 90", worth=True)
 
 
 def test_fragile_reached_by_tests_says_simplify_not_add_tests() -> None:
@@ -857,7 +898,7 @@ def test_fragile_unknown_reach_is_not_zero() -> None:
 
 
 def test_an_anonymous_lead_function_is_left_out_of_the_title() -> None:
-    lead = LeadFinding("complex_method", "high", "<anonymous@3167>", 3167, "")
+    lead = LeadFinding("complex_method", "high", "<anonymous@3167>", 3167, "", worth=True)
     f = _file("src/gateway/chat.ts", lead=lead, tests_reaching=3)
     (a,) = _run(code.fragile_file, _facts([f])).actions
     assert a.title == "Simplify `src/gateway/chat.ts`: tests reach it, and fixes keep landing"
@@ -866,10 +907,10 @@ def test_an_anonymous_lead_function_is_left_out_of_the_title() -> None:
 
 def test_measured_coverage_wins_over_the_test_map() -> None:
     """Ours: update_cmd/command.py (68 changes, 27 fixes, 70%) keeps "raise coverage",
-    and call_resolver.py keeps "simplify _csharp_type_id", whatever reaches them."""
+    and a covered file keeps its simplify step, whatever reaches them."""
     raise_path = "packages/cli/src/repowise/cli/commands/update_cmd/command.py"
     tested_path = "packages/core/src/repowise/core/ingestion/call_resolver.py"
-    lead = LeadFinding("complex_method", "high", "_csharp_type_id", 10, "")
+    lead = LeadFinding("complex_method", "high", "_csharp_type_id", 10, "", worth=True)
     files = [
         _file(raise_path, commits_90d=68, fix_commits_90d=27, line_coverage_pct=70.0,
               tests_reaching=40),

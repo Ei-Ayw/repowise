@@ -89,6 +89,12 @@ _HEALTH_FINDING_COLUMNS = (
     HealthFinding.reason,
     HealthFinding.health_impact,
 )
+#: A lead's function is measured from its details (``health.worth.measure``).
+_LEAD_FINDING_COLUMNS = (
+    *_HEALTH_FINDING_COLUMNS,
+    HealthFinding.line_end,
+    HealthFinding.details_json,
+)
 
 
 async def _anchor(session: AsyncSession, repo_id: str) -> tuple[datetime | None, str | None]:
@@ -162,7 +168,7 @@ async def _files(session: AsyncSession, repo_id: str, since: datetime | None) ->
     if paths:
         findings = (
             await session.execute(
-                select(*_HEALTH_FINDING_COLUMNS).where(
+                select(*_LEAD_FINDING_COLUMNS).where(
                     HealthFinding.repository_id == repo_id,
                     HealthFinding.status == "open",
                     HealthFinding.file_path.in_(paths),

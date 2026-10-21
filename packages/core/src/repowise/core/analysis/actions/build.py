@@ -21,7 +21,8 @@ Row shapes (the field names are the SQL columns):
     ``file_path``, ``fix_sha``, ``committed_at``, ``shape_kind``, ``attribution``.
 ``health_findings``
     ``file_path``, ``biomarker_type``, ``severity``, ``function_name``,
-    ``line_start``, ``reason``, ``health_impact``, ``status`` (absent = open).
+    ``line_start``, ``reason``, ``health_impact``, ``status`` (absent = open);
+    a lead also reads ``line_end`` and ``details_json``, which measure its function.
 ``authors``
     ``author_name``, ``author_email``, ``committed_at``: one row per commit, or
     per identity with its latest commit.
@@ -69,7 +70,7 @@ from typing import Any
 from repowise.core.analysis.dead_code.risk_factors import REVIEW_ONLY_KINDS
 from repowise.core.analysis.finding_registry import excluded_types, is_served
 from repowise.core.analysis.health.fix_first import build_fix_first
-from repowise.core.analysis.health.models import primary_finding, split_by_origin
+from repowise.core.analysis.health.models import lead_and_worth, split_by_origin
 from repowise.core.analysis.health.queue.eligibility import perf_confident_verdict
 from repowise.core.analysis.health.rows import field
 from repowise.core.analysis.health.scoring import HISTORY_CATEGORY, biomarker_category
@@ -212,7 +213,7 @@ def with_leads(files: Mapping[str, FileFacts], findings: Rows) -> dict[str, File
     out = dict(files)
     for path, found in by_path.items():
         shape, _history = split_by_origin(found)
-        lead = primary_finding(shape)
+        lead, worth = lead_and_worth(shape)
         if lead is not None:
             out[path] = replace(
                 out[path],
@@ -222,6 +223,7 @@ def with_leads(files: Mapping[str, FileFacts], findings: Rows) -> dict[str, File
                     function=field(lead, "function_name"),
                     line=field(lead, "line_start"),
                     reason=field(lead, "reason") or "",
+                    worth=worth,
                 ),
             )
     return out

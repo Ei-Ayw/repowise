@@ -32,6 +32,9 @@ class LeadFinding:
     function: str | None
     line: int | None
     reason: str
+    #: Its function is worth breaking up first by the shared rule
+    #: (``health.models.lead_and_worth``): only then is "simplify it" the step.
+    worth: bool = False
 
 
 @dataclass(frozen=True, slots=True)

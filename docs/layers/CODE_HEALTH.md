@@ -122,7 +122,9 @@ repowise next --json                   # the whole stored view
   cause (one in the performance queue) or lost measured coverage; the long, complex or nested code a week leaves is one
   row to plan.
 - A fragile file asks for tests only when no measured coverage and no test in the graph
-  reaches it, else to simplify its lead function. A folder where fixes concentrate names
+  reaches it, else to simplify its lead function. That lead is named only when its
+  function is worth breaking up by the same rule Fix first uses; otherwise the row asks to
+  review why fixes keep landing and shows no finding. A folder where fixes concentrate names
   its most fixed file's first step, or is left out. Under five commits, history-ranked
   rows are left out.
 

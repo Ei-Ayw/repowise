@@ -348,7 +348,9 @@ def _fragile_step(f: FileFacts) -> tuple[str, str, str] | None:
 
     Measured coverage decides first. Without it, "add tests" holds only when no
     test reaches the file in the code graph; a file tests do reach gets the
-    simplify step instead, as an inferred claim.
+    simplify step instead, as an inferred claim. "Simplify" names the lead only
+    when its function is worth breaking up by the shared rule; otherwise the
+    step is to review why fixes keep landing, which names no finding.
     """
     cov = f.line_coverage_pct
     if cov is not None and cov < COVERED_PCT:
@@ -369,9 +371,15 @@ def _fragile_step(f: FileFacts) -> tuple[str, str, str] | None:
         )
     if f.lead is None:
         return None
+    tested = "it is tested" if cov is not None else "tests reach it"
+    if not f.lead.worth:
+        return (
+            f"Review why fixes keep landing in {code(f.path)}: {tested}",
+            "Bug-fix commits slow down.",
+            "review" if cov is not None else "review_reached",
+        )
     name = _lead_name(f)
     where = code(name) + " in " if name else ""
-    tested = "it is tested" if cov is not None else "tests reach it"
     return (
         f"Simplify {where}{code(f.path)}: {tested}, and fixes keep landing",
         "Its lead finding closes and bug-fix commits slow down.",
@@ -415,6 +423,8 @@ def fragile_file(facts: RepoFacts, ctx: RepoContext) -> RuleOutcome:
         if step is None:
             continue
         title, done, variant = step
+        # A review step names no finding, so it shows none as its lead.
+        lead = None if variant.startswith("review") else f.lead
         why = [
             WhyFact("commits in 90 days", str(f.commits_90d)),
             WhyFact("bug-fix commits", str(f.fix_commits_90d)),
@@ -444,23 +454,23 @@ def fragile_file(facts: RepoFacts, ctx: RepoContext) -> RuleOutcome:
                 identity=f.path,
                 surface="file",
                 effort="M" if (f.nloc or 0) < 600 else "L",
-                confidence="high" if variant in ("raise", "simplify") else "medium",
+                confidence="high" if variant in ("raise", "simplify", "review") else "medium",
                 done_when=done,
-                marker=f.lead.biomarker if f.lead else None,
+                marker=lead.biomarker if lead else None,
                 weight=float(f.fix_commits_90d * f.commits_90d),
                 fingerprint=fingerprint(variant, f.fix_commits_90d // 5),
                 details=(
                     (
                         ActionDetail(
                             path=f.path,
-                            line=f.lead.line,
-                            symbol=f.lead.function,
-                            marker=f.lead.biomarker,
-                            severity=f.lead.severity,
-                            reason=f.lead.reason,
+                            line=lead.line,
+                            symbol=lead.function,
+                            marker=lead.biomarker,
+                            severity=lead.severity,
+                            reason=lead.reason,
                         ),
                     )
-                    if f.lead
+                    if lead
                     else ()
                 ),
                 commands=(
