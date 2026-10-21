@@ -226,6 +226,7 @@ async def _stamp_still_true(
         repo_path,
         created_at=top.created_at,
         nodes=json.loads(top.affected_files_json or "[]"),
+        evidence_commits=json.loads(top.evidence_commits_json or "[]"),
     )
     if sentence:
         governing[0]["still_true"] = sentence

@@ -109,10 +109,12 @@ on every read. `superseded` and `dismissed` are set by a person.
 
 - Staleness score: each record carries `staleness_score` between 0 and 1, the
   fraction of its governed files committed to since the decision was recorded.
-  A file the repository does not track counts as changed. At 0.5 or above a
-  record is stale for `decision list --stale-only`, the health summary and the
-  `needs_review` currency. A record that names no file scores 0.0 and is
-  counted separately as unscoped. `repowise decision show` and `get_why` on a
+  A record written before its evidence commits landed counts from the commit
+  that landed them: the commit itself on the main line, or the one squash that
+  names it and changes its files. A file the repository does not track counts
+  as changed. At 0.5 or above a record is stale for `decision list --stale-only`,
+  the health summary and the `needs_review` currency. A record that names no
+  file scores 0.0 and is counted separately as unscoped. `repowise decision show` and `get_why` on a
   path also ask git directly for one record and print what changed.
 - Sticky review: a dismissed candidate is kept as a tombstone, so re-indexing
   never proposes it again. A later extraction never walks an accepted decision

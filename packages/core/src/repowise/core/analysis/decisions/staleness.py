@@ -33,6 +33,7 @@ def compute_staleness(
     affected_files: list[str],
     git_meta_map: dict[str, dict],
     decision_text: str = "",
+    landed_at: datetime | None = None,
 ) -> float:
     """Fraction of *affected_files* that have changed since the record's birth.
 
@@ -40,6 +41,11 @@ def compute_staleness(
     nothing it governs has moved, 1.0 means all of it has. No tuned
     constants and no reading of commit messages. *decision_text* is
     accepted and unused so existing call sites keep working.
+
+    *landed_at* is when the record's own evidence commits reached the main
+    line (see :mod:`.landing`). A record written on a branch is born before
+    the squash that carries it, so the birth is the later of the two: the
+    landing commit is the decision, not a change to it.
 
     A file with no git metadata **after** the caller's gap fill counts as
     changed: the record names something the repository does not track, so
@@ -52,6 +58,8 @@ def compute_staleness(
         return 0.0
 
     created = _as_aware_utc(_coerce_dt(decision_created_at)) if decision_created_at else None
+    if created is not None and landed_at is not None:
+        created = max(created, _as_aware_utc(landed_at))
     changed = 0
     for fp in affected_files:
         meta = git_meta_map.get(fp)

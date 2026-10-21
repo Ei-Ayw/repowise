@@ -686,6 +686,7 @@ def decision_show(decision_id: str, path: str | None, fmt: str) -> None:
         repo_path,
         created_at=rec.created_at,
         nodes=json.loads(rec.affected_files_json or "[]"),
+        evidence_commits=json.loads(rec.evidence_commits_json or "[]"),
     )
     if fmt == "json":
         emit_json({"query": decision_id, "decision": _decision_json(rec, signed, currency)})

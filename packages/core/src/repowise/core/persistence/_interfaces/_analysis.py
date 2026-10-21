@@ -147,7 +147,7 @@ class AnalysisIndexStore(ABC):
 
     @abstractmethod
     async def recompute_decision_staleness(
-        self, repository_id: str, git_meta_map: dict[str, dict]
+        self, repository_id: str, git_meta_map: dict[str, dict], repo_path: str | None = None
     ) -> int: ...
 
     @abstractmethod

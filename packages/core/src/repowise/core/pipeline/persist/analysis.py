@@ -111,6 +111,7 @@ async def persist_analysis(result: Any, session: Any, repo_id: str) -> None:
             decision_dicts,
             vector_store=vector_store,
             git_metadata=result.git_metadata_list,
+            repo_path=getattr(result, "repo_path", None),
         )
     await apply_decision_lifecycle(session, repo_id, getattr(result, "repo_path", None))
 
