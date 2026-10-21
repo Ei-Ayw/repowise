@@ -174,10 +174,13 @@ before returning it:
   repos.
 - Otherwise, if the finding is an unused export and another repo depends on
   this one as a package, confidence is cut to 30% of its value with a note to
-  verify consumers.
+  verify consumers. The note names a dependent only when its package link
+  covers the file's package or its contract link (an HTTP route, a generated
+  client) points at the file. The cut applies either way, because package links
+  can miss a consumer.
 
-The adjustment runs after tiering, so it lowers the displayed confidence
-without moving a finding between tiers. `repo="all"` merges every workspace
+The adjustment runs before tiering, so a lowered finding sits in the tier its
+new confidence names and is never safe to delete. `repo="all"` merges every workspace
 repo and tags each finding with its alias. The CLI has no cross-repo pass:
 `--repo <alias>` analyzes one repo in isolation (the primary repo by default).
 See [WORKSPACES.md](../scale/WORKSPACES.md) for how cross-repo data is built.

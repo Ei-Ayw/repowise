@@ -236,6 +236,12 @@ class _Lookup:
     def get_repos_depending_on(self, repo_alias: str) -> list[str]:
         return ["mobile"]
 
+    def get_package_consumers(self, repo_alias: str) -> list[dict]:
+        return [{"source_repo": "mobile", "target_manifest": "src/b/package.json"}]
+
+    def get_contract_links_as_provider(self, repo_alias: str, file_path: str) -> list[dict]:
+        return [{"consumer_repo": "web"}] if file_path == "src/a/two.py" else []
+
 
 def test_adjust_cross_repo_lowers_consumed_findings() -> None:
     findings = [serialize_finding(r) for r in _ROWS]
@@ -248,6 +254,21 @@ def test_adjust_cross_repo_lowers_consumed_findings() -> None:
     # A finding another repo may consume is never safe to delete.
     assert not by_path["src/a/one.py"]["safe_to_delete"]
     assert not by_path["src/b/five.py"]["safe_to_delete"]
+
+
+def test_package_dependents_are_named_only_where_their_link_reaches() -> None:
+    findings = [serialize_finding(r) for r in _ROWS]
+    adjust_cross_repo(findings, _Lookup(), "api")
+    by_path = {f["file_path"]: f for f in findings}
+    # Inside the consumed package, and a contract provider: named.
+    assert "consumed by: mobile." in by_path["src/b/five.py"]["cross_repo_note"]
+    assert "consumed by: web." in by_path["src/a/two.py"]["cross_repo_note"]
+    # Outside every link: nobody is named, yet the cut stays and safety is withdrawn.
+    lone = [serialize_finding(_row("src/c/six.py", 0.9))]
+    adjust_cross_repo(lone, _Lookup(), "api")
+    assert "mobile" not in lone[0]["cross_repo_note"]
+    assert lone[0]["confidence"] == 0.27
+    assert not lone[0]["safe_to_delete"]
 
 
 def test_adjusted_findings_are_tiered_by_their_lowered_confidence() -> None:

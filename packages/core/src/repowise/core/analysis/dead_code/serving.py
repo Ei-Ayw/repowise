@@ -8,6 +8,7 @@ mappings, read through :func:`field`), plain dicts out; no session.
 from __future__ import annotations
 
 import json
+import posixpath
 from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
@@ -454,6 +455,10 @@ class CrossRepoLookup(Protocol):
 
     def get_repos_depending_on(self, repo_alias: str) -> list[str]: ...
 
+    def get_package_consumers(self, repo_alias: str) -> list[dict]: ...
+
+    def get_contract_links_as_provider(self, repo_alias: str, file_path: str) -> list[dict]: ...
+
 
 def cross_repo_withdraws(
     lookup: CrossRepoLookup | None, alias: str | None, file_path: str, kind: Any
@@ -497,10 +502,42 @@ def _adjust_one(finding: dict, lookup: CrossRepoLookup, alias: str) -> None:
     # Package-level dependents may consume an export without a file edge.
     if finding.get("kind") != "unused_export":
         return
-    depending = lookup.get_repos_depending_on(alias)
-    if depending:
+    if lookup.get_repos_depending_on(alias):
         finding["confidence"] = round(finding["confidence"] * 0.3, 2)
         finding["safe_to_delete"] = False
-        finding["cross_repo_note"] = (
-            f"This export may be consumed by: {', '.join(depending)}. Verify before deletion."
+        finding["cross_repo_note"] = _package_dependent_note(
+            lookup, alias, finding.get("file_path", "")
         )
+
+
+def _package_dependent_note(lookup: CrossRepoLookup, alias: str, file_path: str) -> str:
+    """Name only the dependents whose recorded link reaches *file_path*.
+
+    The cut itself stays repo-wide: package links miss consumers (an
+    unresolved PyPI pin, a CLI call), so they can name a consumer but never
+    prove there is none.
+    """
+    reaching = {
+        link["consumer_repo"]
+        for link in lookup.get_contract_links_as_provider(alias, file_path)
+        if link.get("consumer_repo") not in (None, alias)
+    }
+    reaching.update(
+        link["source_repo"]
+        for link in lookup.get_package_consumers(alias)
+        if _inside_manifest(file_path, link.get("target_manifest"))
+    )
+    if reaching:
+        return f"This export may be consumed by: {', '.join(sorted(reaching))}. Verify before deletion."
+    return (
+        "Confidence lowered: another workspace repo depends on this one, though no recorded "
+        "package or contract link reaches this file. Verify before deletion."
+    )
+
+
+def _inside_manifest(file_path: str, manifest: str | None) -> bool:
+    """Whether *file_path* sits in the package *manifest* declares; unknown counts as inside."""
+    if not manifest:
+        return True
+    root = posixpath.dirname(manifest)
+    return not root or file_path.startswith(root + "/")
