@@ -116,9 +116,9 @@ def test_scale_counts_code_languages_and_skips_external_nodes() -> None:
         {"nloc": 100, "module": "a", "is_test": False},
         {"nloc": 40, "module": "tests", "is_test": True},
     ]
-    scale = build_scale(nodes, metrics)
+    scale = build_scale(nodes, metrics, symbol_count=4)
     assert scale["file_count"] == 3
-    assert scale["symbol_count"] == 5
+    assert scale["symbol_count"] == 4  # passed in, not the per-file sum
     assert scale["language_count"] == 2
     assert {lang["language"] for lang in scale["languages"]} == {"python", "typescript"}
     assert scale["total_nloc"] == 140

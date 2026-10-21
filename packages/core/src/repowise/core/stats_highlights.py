@@ -147,20 +147,17 @@ def _ranked_languages(counts: Counter[str]) -> list[dict[str, Any]]:
     return [{"language": lang, "file_count": n} for lang, n in ranked]
 
 
-def build_scale(file_nodes: Iterable[Row], metrics: Iterable[Row]) -> dict[str, Any]:
+def build_scale(
+    file_nodes: Iterable[Row], metrics: Iterable[Row], symbol_count: int
+) -> dict[str, Any]:
     """Counts and NLOC, plus the :func:`file_mix` languages and module count.
 
     ``file_nodes`` are graph file nodes; external dependency nodes are dropped
-    so the file count describes the repo.
+    so the file count describes the repo. ``symbol_count`` is
+    ``crud.count_symbols``, the figure every other surface shows.
     """
     file_nodes = list(file_nodes)
-    file_count = 0
-    symbol_count = 0
-    for node in file_nodes:
-        if _is_external(node):
-            continue
-        file_count += 1
-        symbol_count += _int(node.get("symbol_count"))
+    file_count = sum(1 for node in file_nodes if not _is_external(node))
 
     total_nloc = 0
     test_nloc = 0
