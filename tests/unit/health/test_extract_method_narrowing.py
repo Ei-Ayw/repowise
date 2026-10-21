@@ -168,7 +168,7 @@ def test_a_span_reading_a_property_a_guard_narrowed_is_refused(guard, planned):
     from dataclasses import dataclass
 
     from repowise.core.analysis.health.refactoring.extract_method import (
-        PROPERTY_NARROWED,
+        NARROWING_LOST,
         STAGE_REFUSED_DETAIL,
         ExtractMethodDetector,
     )
@@ -197,7 +197,7 @@ def test_a_span_reading_a_property_a_guard_narrowed_is_refused(guard, planned):
     )
     plans = ExtractMethodDetector().detect(ctx)
     assert any("tc" in p.plan["params"] for p in plans) is planned
-    assert (PROPERTY_NARROWED in finding.details.get(STAGE_REFUSED_DETAIL, ())) is not planned
+    assert (NARROWING_LOST in finding.details.get(STAGE_REFUSED_DETAIL, ())) is not planned
 
 
 _GUARDED_SRC = """
@@ -245,3 +245,128 @@ def test_which_property_tests_narrow_a_span_input(guard, body, rebind, refused):
         fn.fn_node, get_language_map("typescript"), line, line, {"tc", "xs", "seen"}, _def_lines(fn)
     )
     assert bool(found) is refused
+
+
+def _ts_function(src: str):
+    from repowise.core.ingestion.parser import _get_language
+
+    if _get_language("typescript") is None:
+        pytest.skip("tree-sitter language pack missing for typescript")
+    src = textwrap.dedent(src)
+    res = analyze_file("m.ts", "typescript", src.encode(), flagged_only=False)
+    if not res.functions:
+        pytest.skip("tree-sitter language pack missing for typescript")
+    return res.functions[0], src.splitlines()
+
+
+def test_an_if_or_assert_the_span_runs_under_narrows_a_plain_name():
+    # zulip ``composebox_typeahead.ts``: ``if (sub !== undefined) { ... }`` around
+    # the span; ``activity_ui.ts``: ``assert(user_cursor !== undefined)`` above it.
+    fn, lines = _ts_function("""
+    function f(sub: Sub | undefined, n: number, out: string[]) {
+      assert(out !== undefined);
+      if (sub !== undefined && n > 0) {
+        out.push(sub.name);
+      }
+    }
+    """)
+    line = next(i for i, ln in enumerate(lines, 1) if "out.push" in ln)
+    types = {"sub": "Sub | undefined", "out": "string[]", "n": "number"}
+    notes = _narrow(fn, Extraction(line, line, ("sub", "n", "out"), (), 0, 0), "typescript", types)
+    holder = next(i for i, ln in enumerate(lines, 1) if "sub !== undefined" in ln)
+    asserted = next(i for i, ln in enumerate(lines, 1) if "assert(" in ln)
+    # An ordering test (``n > 0``) narrows nothing.
+    assert notes == {"sub": holder, "out": asserted} and types == {"n": "number"}
+
+
+@pytest.mark.parametrize(
+    ("src", "reason"),
+    [
+        # A module-level name the host asserts on: no parameter carries it.
+        ("""
+        function f(out: string[]) {
+          assert(cursor !== undefined);
+          for (const x of out) {
+            if (x) {
+              cursor.next();
+            } else if (x === "a") {
+              cursor.prev();
+            }
+            cursor.mark(x);
+          }
+        }
+        """, "narrowing_lost"),
+        # ``let line: T;`` outside, assigned inside: the helper's write names nothing.
+        ("""
+        function f(out: string[], k: string) {
+          let line: string;
+          for (const x of out) {
+            if (x === k) {
+              line = x;
+              out.push(line);
+            } else if (x) {
+              line = k;
+              out.push(line);
+            }
+          }
+        }
+        """, "outer_declaration"),
+    ],
+)
+def test_a_span_whose_helper_cannot_be_written_is_refused(src, reason):
+    from repowise.core.analysis.health.refactoring.extract_method import _writable_spans
+
+    fn, lines = _ts_function(src)
+    start = next(i for i, ln in enumerate(lines, 1) if "for (const x" in ln)
+    end = next(i for i in range(len(lines), 0, -1) if lines[i - 1].strip() == "}") - 1
+    refused: set[str] = set()
+    span = Extraction(start, end, ("out",) if reason == "narrowing_lost" else ("k", "out"), (), 0, 0)
+    assert _writable_spans(fn, [span], "typescript", refused) == []
+    assert refused == {reason}
+
+
+def test_a_span_holding_an_assert_the_code_after_it_needs_is_refused():
+    # zulip ``copy_messages.ts``: the span opened with ``assert(message !== undefined)``
+    # and the loop read ``message.sender_full_name`` after it.
+    from repowise.core.analysis.health.refactoring.extract_method import _writable_spans
+
+    fn, lines = _ts_function("""
+    function f(rows: Row[], out: string[]) {
+      for (const row of rows) {
+        const message = find(row);
+        assert(message !== undefined);
+        if (message.a) {
+          out.push(message.a);
+        }
+        out.push(message.name);
+      }
+    }
+    """)
+    start = next(i for i, ln in enumerate(lines, 1) if "assert(" in ln)
+    span = Extraction(start, start + 3, ("message", "out"), (), 0, 0)
+    refused: set[str] = set()
+    assert _writable_spans(fn, [span], "typescript", refused) == []
+    assert refused == {"narrowing_lost"}
+
+
+def test_an_output_declared_before_the_span_is_declared_again_in_the_helper():
+    # ``blast-radius-header.tsx``: ``let gapClause: string;`` above, assigned in the span.
+    from repowise.core.analysis.health.refactoring.extract_method import _undeclared_outputs_note
+
+    fn, lines = _ts_function("""
+    function f(n: number): string {
+      let clause: string;
+      if (n > 1) {
+        clause = "many";
+      } else {
+        clause = "one";
+      }
+      return clause;
+    }
+    """)
+    start = next(i for i, ln in enumerate(lines, 1) if "if (n > 1)" in ln)
+    span = Extraction(start, start + 4, ("n",), ("clause",), 0, 0)
+    assert _undeclared_outputs_note(fn, span) == [
+        "Declare clause at the top of the helper, as the function does: the lines assign it "
+        "without declaring it."
+    ]

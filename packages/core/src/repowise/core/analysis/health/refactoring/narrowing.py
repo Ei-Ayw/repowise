@@ -65,10 +65,16 @@ def narrowings(
     def_lines: dict[str, list[int]],
 ) -> dict[str, Narrowing]:
     """Per name in *names*, the nearest guard narrowing it over lines
-    *start*..*end* (module docstring)."""
+    *start*..*end* (module docstring). An ``assert(x)`` above them or an
+    ``if`` / ``while`` / ``switch`` holding them narrows too, to a type the
+    declaration does not name."""
     out: dict[str, Narrowing] = {}
     for sib in _statements_above(fn_node, lmap, start, end):
         _add_guard(sib, lmap, end, names, def_lines, out)
+    for st, condition in _tests(fn_node, lmap, start, end, exiting=False):
+        for name in _tested_names(condition):
+            if name in names and name not in out and not _rebound(st, name, end, def_lines):
+                out[name] = Narrowing(st.start_point[0] + 1, None)
     return out
 
 
@@ -84,18 +90,73 @@ def property_narrowings(
     properties for lines *start*..*end* (module docstring): an exiting guard
     above them, or a statement holding them. Nothing may rebind the name
     between the test and *end*."""
-    stmts = span_statements(fn_node, start, end, lmap)
-    read = "\n".join(_text(st) for st in stmts)
-    above = _statements_above(fn_node, lmap, start, end)
-    tests = [(sib, exiting_guard(sib, lmap, _EXITS)) for sib in above]
-    tests += [(holder, _condition(holder)) for holder in _holders(fn_node, stmts)]
+    read = "\n".join(_text(st) for st in span_statements(fn_node, start, end, lmap))
     out: dict[str, int] = {}
-    for st, condition in sorted(tests, key=lambda t: -t[0].start_point[0]):
-        for name, path in _property_tests(condition) if condition is not None else ():
+    for st, condition in _tests(fn_node, lmap, start, end, exiting=True):
+        for name, path in _property_tests(condition):
             if name not in names or name in out or (path and not _reads_path(read, path)):
                 continue
-            if not any(st.start_point[0] + 1 < ln <= end for ln in def_lines.get(name, ())):
+            if not _rebound(st, name, end, def_lines):
                 out[name] = st.start_point[0] + 1
+    return out
+
+
+def span_guards(fn_node: Node | None, lmap: LanguageNodeMap, start: int, end: int) -> set[str]:
+    """The names an ``assert(...)`` or a throwing guard among lines
+    *start*..*end* tests, plain or by a property: lifted into a helper, the
+    narrowing it gives the code after the lines is gone."""
+    out: set[str] = set()
+    for st in span_statements(fn_node, start, end, lmap):
+        condition = _asserted(st) or exiting_guard(st, lmap, lmap.raise_kinds)
+        if condition is not None:
+            out |= _tested_names(condition) | {root for root, _ in _property_tests(condition)}
+    return out
+
+
+def _tests(
+    fn_node: Node | None, lmap: LanguageNodeMap, start: int, end: int, *, exiting: bool
+) -> list[tuple[Node, Node]]:
+    """``(statement, condition)`` per test the span runs under, nearest first:
+    an ``assert(...)`` above it, a statement holding it, and with *exiting* an
+    exiting guard above it."""
+    out = []
+    for sib in _statements_above(fn_node, lmap, start, end):
+        condition = _asserted(sib) or (exiting_guard(sib, lmap, _EXITS) if exiting else None)
+        if condition is not None:
+            out.append((sib, condition))
+    stmts = span_statements(fn_node, start, end, lmap)
+    out += [(h, c) for h in _holders(fn_node, stmts) if (c := _condition(h)) is not None]
+    return sorted(out, key=lambda t: -t[0].start_point[0])
+
+
+def _asserted(st: Node) -> Node | None:
+    """The condition of an ``assert(cond)`` / ``console.assert(cond)`` statement."""
+    call = st.named_children[0] if st.type == "expression_statement" and st.named_children else None
+    if call is None or call.type != "call_expression":
+        return None
+    if not _text(call.child_by_field_name("function")).split(".")[-1].startswith("assert"):
+        return None
+    args = call.child_by_field_name("arguments")
+    return args.named_children[0] if args is not None and args.named_children else None
+
+
+def _rebound(st: Node, name: str, end: int, def_lines: dict[str, list[int]]) -> bool:
+    return any(st.end_point[0] + 1 < ln <= end for ln in def_lines.get(name, ()))
+
+
+def _tested_names(expr: Node) -> set[str]:
+    """The plain names *expr* tests (``x`` in ``x !== undefined``, ``isRec(x)``):
+    not a property's object, a callee, an ordering or arithmetic operand."""
+    out: set[str] = set()
+    stack = [expr]
+    while stack:
+        node = stack.pop()
+        stack.extend(node.named_children)
+        parent = node.parent
+        if node.type != "identifier" or (parent is not None and parent.type in _MEMBER_KINDS):
+            continue
+        if _operand_role(node) != "none":
+            out.add(_text(node))
     return out
 
 
@@ -302,4 +363,4 @@ def _text(node: Node | None) -> str:
     return (node.text or b"").decode("utf-8", "replace") if node is not None else ""
 
 
-__all__ = ["Narrowing", "narrowed", "narrowings", "property_narrowings"]
+__all__ = ["Narrowing", "narrowed", "narrowings", "property_narrowings", "span_guards"]
