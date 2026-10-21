@@ -371,19 +371,24 @@ def _fragile_step(f: FileFacts) -> tuple[str, str, str] | None:
         )
     if f.lead is None:
         return None
-    tested = "it is tested" if cov is not None else "tests reach it"
-    if not f.lead.worth:
+    return _lead_step(f, measured=cov is not None)
+
+
+def _lead_step(f: FileFacts, *, measured: bool) -> tuple[str, str, str]:
+    """:func:`_fragile_step` for a tested file with a lead finding."""
+    tested = "it is tested" if measured else "tests reach it"
+    if not f.lead or not f.lead.worth:
         return (
             f"Review why fixes keep landing in {code(f.path)}: {tested}",
             "Bug-fix commits slow down.",
-            "review" if cov is not None else "review_reached",
+            "review" if measured else "review_reached",
         )
     name = _lead_name(f)
     where = code(name) + " in " if name else ""
     return (
         f"Simplify {where}{code(f.path)}: {tested}, and fixes keep landing",
         "Its lead finding closes and bug-fix commits slow down.",
-        "simplify" if cov is not None else "reached",
+        "simplify" if measured else "reached",
     )
 
 
@@ -420,76 +425,85 @@ def fragile_file(facts: RepoFacts, ctx: RepoContext) -> RuleOutcome:
     actions = []
     for f in fragile:
         step = _fragile_step(f)
-        if step is None:
-            continue
-        title, done, variant = step
-        # A review step names no finding, so it shows none as its lead.
-        lead = None if variant.startswith("review") else f.lead
-        why = [
-            WhyFact("commits in 90 days", str(f.commits_90d)),
-            WhyFact("bug-fix commits", str(f.fix_commits_90d)),
-            _coverage_fact(f, facts),
-        ]
-        if f.line_coverage_pct is None:
-            why.append(_reach_fact(f))
-        impact = (
-            f"Changed {f.commits_90d} times in 90 days, and {f.fix_commits_90d} "
-            "of those commits were bug fixes."
-        )
-        if f.dependents and f.dependents >= 5:
-            why.append(WhyFact("files that import it", str(f.dependents)))
-            impact += f" {f.dependents} files import it."
-        actions.append(
-            Action(
-                rule=rule,
-                tier="plan",
-                horizons=("week", "quarter") if f.path in week_rows else ("quarter",),
-                severity="high" if f.fix_commits_90d >= 10 else "medium",
-                title=title,
-                impact=impact,
-                why=tuple(why),
-                target_kind="file",
-                target_path=f.path,
-                target_symbol=_lead_name(f) if variant in ("simplify", "reached") else None,
-                identity=f.path,
-                surface="file",
-                effort="M" if (f.nloc or 0) < 600 else "L",
-                confidence="high" if variant in ("raise", "simplify", "review") else "medium",
-                done_when=done,
-                marker=lead.biomarker if lead else None,
-                weight=float(f.fix_commits_90d * f.commits_90d),
-                fingerprint=fingerprint(variant, f.fix_commits_90d // 5),
-                details=(
-                    (
-                        ActionDetail(
-                            path=f.path,
-                            line=lead.line,
-                            symbol=lead.function,
-                            marker=lead.biomarker,
-                            severity=lead.severity,
-                            reason=lead.reason,
-                        ),
-                    )
-                    if lead
-                    else ()
-                ),
-                commands=(
-                    ActionCommand.call(
-                        "Its bug-fix history, co-change partners and test gaps",
-                        "get_risk",
-                        {"targets": [f.path]},
-                        cli=f"repowise risk -t {f.path}",
-                    ),
-                    ActionCommand.call(
-                        "Every open finding in the file",
-                        "get_health",
-                        {"targets": [f.path], "include": ["biomarkers"]},
-                        cli=f"repowise health --file {f.path}",
-                    ),
+        if step is not None:
+            actions.append(_fragile_action(f, step, facts, week=f.path in week_rows))
+    return RuleOutcome(rule, "evaluated", "", tuple(actions))
+
+
+def _fragile_why(f: FileFacts, facts: RepoFacts) -> tuple[tuple[WhyFact, ...], str]:
+    """A fragile file's why facts and impact line."""
+    why = [
+        WhyFact("commits in 90 days", str(f.commits_90d)),
+        WhyFact("bug-fix commits", str(f.fix_commits_90d)),
+        _coverage_fact(f, facts),
+    ]
+    if f.line_coverage_pct is None:
+        why.append(_reach_fact(f))
+    impact = (
+        f"Changed {f.commits_90d} times in 90 days, and {f.fix_commits_90d} "
+        "of those commits were bug fixes."
+    )
+    if f.dependents and f.dependents >= 5:
+        why.append(WhyFact("files that import it", str(f.dependents)))
+        impact += f" {f.dependents} files import it."
+    return tuple(why), impact
+
+
+def _fragile_action(
+    f: FileFacts, step: tuple[str, str, str], facts: RepoFacts, *, week: bool
+) -> Action:
+    title, done, variant = step
+    # A review step names no finding, so it shows none as its lead.
+    lead = None if variant.startswith("review") else f.lead
+    why, impact = _fragile_why(f, facts)
+    return Action(
+        rule="fragile_file",
+        tier="plan",
+        horizons=("week", "quarter") if week else ("quarter",),
+        severity="high" if f.fix_commits_90d >= 10 else "medium",
+        title=title,
+        impact=impact,
+        why=why,
+        target_kind="file",
+        target_path=f.path,
+        target_symbol=_lead_name(f) if variant in ("simplify", "reached") else None,
+        identity=f.path,
+        surface="file",
+        effort="M" if (f.nloc or 0) < 600 else "L",
+        confidence="high" if variant in ("raise", "simplify", "review") else "medium",
+        done_when=done,
+        marker=lead.biomarker if lead else None,
+        weight=float(f.fix_commits_90d * f.commits_90d),
+        fingerprint=fingerprint(variant, f.fix_commits_90d // 5),
+        details=(
+            (
+                ActionDetail(
+                    path=f.path,
+                    line=lead.line,
+                    symbol=lead.function,
+                    marker=lead.biomarker,
+                    severity=lead.severity,
+                    reason=lead.reason,
                 ),
             )
-        )
-    return RuleOutcome(rule, "evaluated", "", tuple(actions))
+            if lead
+            else ()
+        ),
+        commands=(
+            ActionCommand.call(
+                "Its bug-fix history, co-change partners and test gaps",
+                "get_risk",
+                {"targets": [f.path]},
+                cli=f"repowise risk -t {f.path}",
+            ),
+            ActionCommand.call(
+                "Every open finding in the file",
+                "get_health",
+                {"targets": [f.path], "include": ["biomarkers"]},
+                cli=f"repowise health --file {f.path}",
+            ),
+        ),
+    )
 
 
 def fix_concentration(facts: RepoFacts, ctx: RepoContext) -> RuleOutcome:
