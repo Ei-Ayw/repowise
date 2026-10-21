@@ -184,6 +184,9 @@ _FIX_COMMIT_EXCLUDE: tuple[re.Pattern[str], ...] = (
 # prior-defects baseline — a wider window than the 90d activity signals because
 # defect history is a slower-moving cluster than recent churn.
 PRIOR_DEFECT_WINDOW_DAYS: int = 180
+# The window as a surface prints it beside a count: a bare fix total next to a
+# 90-day commit count reads as a 90-day figure.
+PRIOR_DEFECT_WINDOW_LABEL: str = f"{PRIOR_DEFECT_WINDOW_DAYS // 30} months"
 
 
 def is_fix_commit(subject: str) -> bool:

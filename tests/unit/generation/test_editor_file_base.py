@@ -482,7 +482,7 @@ def test_render_hotspot_row_leads_with_fix_history(gen):
         hotspots=[_hotspot("src/a.py", fix_count=5, bug_magnet=True, last_fix_date="2026-03-14")],
     )
     result = gen.render(data)
-    assert "5 bug fixes, last fix 2026-03-14 (bug magnet); 28 commits/90d" in result
+    assert "5 bug fixes in 6 months, last fix 2026-03-14 (bug magnet); 28 commits/90d" in result
 
 
 def test_render_hotspot_row_singularizes_one_fix(gen):
@@ -493,7 +493,7 @@ def test_render_hotspot_row_singularizes_one_fix(gen):
         hotspots=[_hotspot("src/a.py", fix_count=1, last_fix_date="2026-03-27")],
     )
     result = gen.render(data)
-    assert "1 bug fix, last fix 2026-03-27" in result
+    assert "1 bug fix in 6 months, last fix 2026-03-27" in result
     assert "1 bug fixes" not in result
 
 

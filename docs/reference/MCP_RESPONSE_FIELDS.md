@@ -183,7 +183,7 @@ Per target, under `targets`:
 | title, summary, symbols | Docs summary and symbols with signatures and lines |
 | `symbols_truncated`, `symbols_total` | Compact card: `{shown, total, hint}` and the full count |
 | `hotspot` | Churn flag |
-| `fix_history` | Files with counted bug fixes: count, age, `bug_magnet`. A cue to call `get_risk` |
+| `fix_history` | Files with counted bug fixes: `fix_count` over `window` (6 months), age, `bug_magnet`. A cue to call `get_risk` |
 | `episodes` | Count of dated records; `get_why` serves them |
 | decisions | Titles; with `include=["decisions"]` the lanes `decisions`, `candidates` (max 3), `history` (max 2) |
 | `file_preview` | File with no symbols: `lines`, `chars`, and `heading_count` + 3 `headings` (markdown, reST) or 3 lines as `head` |
@@ -350,7 +350,7 @@ Per file:
 
 | Field | Meaning |
 |-------|---------|
-| `defect_profile` | Files with counted fixes: `fix_count` (6 months), `last_fix_days_ago` (to the indexed commit), `bug_magnet`, `top_symbols` |
+| `defect_profile` | Files with counted fixes: `fix_count` over `window` (6 months), `last_fix_days_ago` (to the indexed commit), `bug_magnet`, `top_symbols` |
 | `hotspot_score` | 0 to 1 churn percentile |
 | `health_score` | 0 to 10 |
 | `dependents_count` | Direct structural dependents; a floor |

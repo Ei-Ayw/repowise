@@ -183,8 +183,8 @@ export function HotspotTable({
                 {showFixes && (
                   <SortHeader
                     column="fixes"
-                    label="Fixes"
-                    title="Bug-fix commits that touched this file in the trailing defect window. Churn counts every change; this counts only the ones that fixed something."
+                    label="Fixes 6mo"
+                    title="Bug-fix commits that touched this file in the last 6 months. Churn counts every change; this counts only the ones that fixed something."
                     sort={sort}
                     onSortChange={onSortChange}
                     className="w-24"

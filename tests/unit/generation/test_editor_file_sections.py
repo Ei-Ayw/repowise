@@ -171,7 +171,7 @@ def test_repo_facts_lead_the_block(gen):
 
 def test_hotspot_rows_carry_a_date_not_an_age(gen):
     rendered = gen.render(_full_data())
-    assert "4 bug fixes, last fix 2026-10-12 (bug magnet); 12 commits/90d" in rendered
+    assert "4 bug fixes in 6 months, last fix 2026-10-12 (bug magnet); 12 commits/90d" in rendered
     assert " ago" not in rendered
 
 
