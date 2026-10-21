@@ -28,6 +28,13 @@ _PY_SQL_LITERAL_RE = re.compile(
     r"^[rRuUbBfF]*[\"']+\s*(?:SELECT|INSERT|UPDATE|DELETE|WITH|CREATE|DROP|ALTER|PRAGMA)\b",
     re.IGNORECASE,
 )
+# Schema statements run once per table, index or setting the code names, however
+# many rows those tables hold: a loop of them is no N+1 and has no batch form.
+_PY_SCHEMA_SQL_RE = re.compile(
+    r"^[rRuUbBfF]*[\"']+\s*(?:CREATE|DROP|ALTER|TRUNCATE|PRAGMA|VACUUM|REINDEX|ANALYZE"
+    r"|COMMENT\s+ON|GRANT|REVOKE)\b",
+    re.IGNORECASE,
+)
 PY_DB_AMBIGUOUS: frozenset[str] = frozenset({"all", "first", "one", "one_or_none"})
 PY_SUBPROC_METHODS: frozenset[str] = frozenset(
     {"run", "call", "check_call", "check_output", "Popen"}

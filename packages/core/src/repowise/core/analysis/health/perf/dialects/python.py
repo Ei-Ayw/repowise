@@ -66,11 +66,14 @@ from .python_nodes import (
     _bindings,
     _binds,
     _field_text,
+    _first_arg,
     _fixed_set,
     _in_filter,
     _literal_range,
     _module_int_constant,
+    _runs_schema_statement,
     _scalar_literal,
+    _splits_constant,
     _string_value,
     _text,
     _value_refs,
@@ -171,7 +174,9 @@ class PythonPerfDialect(PythonBatchForms, PythonLoopSources, IterableSources):
             io_names=io_names,
             has_db_import=has_db_import or self.shows_a_query(call),
         )
-        if kind == "db" and self._reads_a_registry(call, io_names):
+        if kind == "db" and (
+            self._reads_a_registry(call, io_names) or _runs_schema_statement(call, self.reaching_value)
+        ):
             return None
         orm_get = self._orm_get(call) if kind is None else None
         if orm_get is not None:
@@ -205,8 +210,7 @@ class PythonPerfDialect(PythonBatchForms, PythonLoopSources, IterableSources):
 
     def _passes_a_statement(self, call: Node) -> bool:
         """The first argument is a statement builder call or a SQL string literal."""
-        args = call.child_by_field_name("arguments")
-        first = next((c for c in args.children if c.is_named), None) if args is not None else None
+        first = _first_arg(call)
         if first is None:
             return False
         if first.type == "call":
@@ -278,8 +282,9 @@ class PythonPerfDialect(PythonBatchForms, PythonLoopSources, IterableSources):
         return model, positional[1]
 
     def is_constant_loop(self, node: Node) -> bool:
-        """``for _ in range(<int literals>)``, ``for x in (<literal>)`` or
-        ``for x in ALL_CAPS`` (a module constant by convention)."""
+        """``for _ in range(<int literals>)``, ``for x in (<literal>)``,
+        ``for x in ALL_CAPS`` (a module constant by convention) or a split of a
+        string the source spells out (``for stmt in SCHEMA.split(";")``)."""
         if node.type != "for_statement":
             return False
         right = node.child_by_field_name("right")
@@ -291,7 +296,7 @@ class PythonPerfDialect(PythonBatchForms, PythonLoopSources, IterableSources):
             name = right.text.decode("utf-8", "replace")
             if name.isupper() and len(name) > 1:
                 return True
-        return right.type == "call" and _literal_range(right)
+        return right.type == "call" and (_literal_range(right) or _splits_constant(right))
 
     # Builtins that wrap a collection without changing what is iterated, so the
     # same-collection O(n^2) shape sees through them: ``for x in enumerate(items)``
