@@ -74,3 +74,11 @@ def test_shared_store_reads_this_members_row(tmp_path: Path, monkeypatch) -> Non
         )
     monkeypatch.setenv("REPOWISE_DB_URL", f"sqlite+aiosqlite:///{db.as_posix()}")
     assert read_index_synced_at(tmp_path) == _SYNCED
+
+
+def test_unreadable_stamps_are_none(tmp_path: Path, monkeypatch) -> None:
+    from repowise.core.workspace.update import synced_at_iso
+
+    assert synced_at_iso("not a time") is None
+    monkeypatch.setenv("REPOWISE_DB_URL", "postgresql://u@h/db")
+    assert read_index_synced_at(tmp_path) is None

@@ -257,22 +257,11 @@ def sync_workspace_state_from_disk(
 
     Returns the list of aliases that changed.
     """
-    changed: list[str] = []
-    for entry in ws_config.repos:
-        abs_path = (workspace_root / entry.path).resolve()
-        if not abs_path.is_dir():
-            continue
-        disk_commit = read_state_commit(abs_path)
-        disk_synced_at = read_index_synced_at(abs_path)
-        moved = False
-        if disk_commit is not None and disk_commit != entry.last_commit_at_index:
-            entry.last_commit_at_index = disk_commit
-            moved = True
-        if disk_synced_at is not None and disk_synced_at != entry.indexed_at:
-            entry.indexed_at = disk_synced_at
-            moved = True
-        if moved:
-            changed.append(entry.alias)
+    changed = [
+        entry.alias
+        for entry in ws_config.repos
+        if _refresh_entry_from_disk(entry, (workspace_root / entry.path).resolve())
+    ]
     if changed and save_if_changed:
         try:
             ws_config.save(workspace_root)
@@ -280,6 +269,21 @@ def sync_workspace_state_from_disk(
             # Saving is best-effort — the in-memory sync still happened.
             _log.warning("Could not persist synced workspace config", exc_info=True)
     return changed
+
+
+def _refresh_entry_from_disk(entry: Any, abs_path: Path) -> bool:
+    """Copy the member's on-disk commit and sync time onto *entry*; True if either moved."""
+    if not abs_path.is_dir():
+        return False
+    moved = False
+    for attr, disk in (
+        ("last_commit_at_index", read_state_commit(abs_path)),
+        ("indexed_at", read_index_synced_at(abs_path)),
+    ):
+        if disk is not None and disk != getattr(entry, attr):
+            setattr(entry, attr, disk)
+            moved = True
+    return moved
 
 
 def check_repo_staleness(
