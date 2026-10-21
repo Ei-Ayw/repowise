@@ -447,6 +447,22 @@ def _build_origin_story(
 _DIRECTORY_KEY_COMMITS = 5
 
 
+def _date_or_unknown(pick: Any, stamps: list) -> str:
+    """``pick`` (min or max) of the known *stamps* as a date, else ``"unknown"``."""
+    known = [t for t in stamps if t]
+    return pick(known).strftime("%Y-%m-%d") if known else "unknown"
+
+
+def _newest_distinct_commits(file_metas: list) -> list[dict]:
+    """Every file's stored significant commits, one row per SHA, newest first."""
+    by_sha: dict[str, dict] = {}
+    for m in file_metas:
+        for c in json.loads(m.significant_commits_json or "[]"):
+            if c.get("sha"):
+                by_sha.setdefault(c["sha"], c)
+    return sorted(by_sha.values(), key=lambda c: c.get("date", ""), reverse=True)
+
+
 def _build_directory_origin(
     dir_path: str,
     file_metas: list,
@@ -461,17 +477,9 @@ def _build_directory_origin(
     """
     if not file_metas:
         return _build_origin_story(dir_path, None, governing_decisions)
-    firsts = [m.first_commit_at for m in file_metas if m.first_commit_at]
-    lasts = [m.last_commit_at for m in file_metas if m.last_commit_at]
-    first_date = min(firsts).strftime("%Y-%m-%d") if firsts else "unknown"
-    last_date = max(lasts).strftime("%Y-%m-%d") if lasts else "unknown"
-    by_sha: dict[str, dict] = {}
-    for m in file_metas:
-        for c in json.loads(m.significant_commits_json or "[]"):
-            if c.get("sha"):
-                by_sha.setdefault(c["sha"], c)
-    commits = sorted(by_sha.values(), key=lambda c: c.get("date", ""), reverse=True)
-    key_commits = commits[:_DIRECTORY_KEY_COMMITS]
+    first_date = _date_or_unknown(min, [m.first_commit_at for m in file_metas])
+    last_date = _date_or_unknown(max, [m.last_commit_at for m in file_metas])
+    key_commits = _newest_distinct_commits(file_metas)[:_DIRECTORY_KEY_COMMITS]
     return {
         "available": True,
         "scope": "directory",

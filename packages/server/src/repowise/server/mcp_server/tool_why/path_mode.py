@@ -77,11 +77,9 @@ async def _why_path(query: str, repo: str | None) -> dict:
         matched = _records_naming_path(all_decisions, query)
         # A typo or a stale path: nothing to excavate, so say so before the
         # archaeology fallback mines unrelated commits for it.
-        if (
-            git_meta is None
-            and not matched
-            and not _maybe_on_disk(ctx.path, query)
-            and not await _indexed_under(session, repository.id, query, exclude_spec)
+        known = git_meta is not None or bool(matched) or _maybe_on_disk(ctx.path, query)
+        if not known and not await _indexed_under(
+            session, repository.id, query, exclude_spec
         ):
             return {
                 "mode": "path",
