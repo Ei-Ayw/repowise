@@ -1,3 +1,5 @@
+import type { ContractOriginWire, LinkStrategyWire } from "@repowise-dev/types/workspace";
+
 // ---------------------------------------------------------------------------
 // Workspace
 // ---------------------------------------------------------------------------
@@ -88,6 +90,8 @@ export interface WorkspaceContractEntry {
    * just cannot be traversed into the call graph.
    */
   symbol_id: string | null;
+  /** What established the contract (`route_registration`, `client_call`, ...). */
+  origin?: ContractOriginWire | null;
   /**
    * Extractor-supplied detail (`extraction_layer`, `framework`, `method`,
    * `path`, `table`, `package`...). Keys vary by contract type.
@@ -99,6 +103,8 @@ export interface WorkspaceContractLinkEntry {
   contract_id: string;
   contract_type: string;
   match_type: string;
+  /** The matching rule that made the link (`exact_id`, `binding_routed`, ...); `match_type` derives from it. */
+  strategy?: LinkStrategyWire | null;
   confidence: number;
   provider_repo: string;
   provider_file: string;
